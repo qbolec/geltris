@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Physics Simulator</title>
+    <style>
+        body { margin: 0; display: flex; justify-content: center; align-items: center; height: 100vh; background: #f0f0f0; }
+        canvas { background: white; }
+    </style>
+</head>
+<body>
+    <script>
+        const canvas = document.createElement("canvas");
+        const ctx = canvas.getContext("2d");
+        document.body.appendChild(canvas);
+        canvas.width = 600;
+        canvas.height = 600;
+
+        const ATOMS_PER_CELL = 10;
+        const ATOM_SPACING = 8;
+        const GRAVITY = 20;
+        const DRAG = 0.999;
+        const INTEGRITY_K = 10000;
+        const COLLISION_K = INTEGRITY_K;
+        const COLLISION_NEUTRAL_LENGTH = ATOM_SPACING;
+        const dt = 0.001;
+        const plus = (a,b) => ({x:a.x+b.x,y:a.y+b.y});
+        const minus = (a,b) => ({x:a.x-b.x,y:a.y-b.y});
+        const scale = (s,p) => ({x:s*p.x,y:s*p.y});
+        const scalar = (a,b) => a.x*b.x + a.y*b.y;
+        const length = p => Math.hypot(p.x, p.y)
+        const distance = (a,b) => length(minus(a,b));
+        const normalize = p => scale(1.0/length(p),p);
+        const deg2rad = d => Math.PI*d/180;
+        const polar = (a,r) => ({x:Math.cos(a)*r,y:Math.sin(a)*r});
+       
+        class Atom {
+            constructor(x, y, m = 1) {
+                this.pos = {x,y};
+                this.v = {x:0,y:0};
+                this.f = {x:0,y:0};
+                this.m = m;
+            }
+        }
+        class Crystal {
+            constructor(x,y, bitmap, fixed=false){
+                this.fixed = fixed;
+                this.atoms = [];
+                bitmap.forEach((stripe,row)=>{
+                    for(let r=0;r<ATOMS_PER_CELL;++r){
+                        this.atoms[row*ATOMS_PER_CELL+r]=[];
+                    }
+                    stripe.forEach((pixel, column)=>{
+                        for(let r=0;r<ATOMS_PER_CELL;++r){
+                            for(let c=0;c<ATOMS_PER_CELL;++c){
+                                this.atoms[row*ATOMS_PER_CELL+r][column*ATOMS_PER_CELL+c]=pixel ? new Atom(
+                                    x + (column*ATOMS_PER_CELL+c)*ATOM_SPACING, 
+                                    y + (row*ATOMS_PER_CELL+r)*ATOM_SPACING
+                                ): null;
+                            }
+                        }
+                    })
+                })
+                this.springs = [];
+                this.boundary = [];
+                this.atoms.forEach((stripe, r)=>{
+                    stripe.forEach((atom,c) => {
+                        if(!atom)return;
+                        if(![[-1,0],[1,0],[0,1],[0,-1]].every(([dr,dc])=>{
+                            const nr = r+dr;
+                            const nc = c+dc;
+                            return this.atoms[nr] && this.atoms[nr][nc];
+                        })){
+                            this.boundary.push(atom);
+                        }
+                        [[-1,0],[0,-1],[-1,-1],[1,-1]].forEach(([dr,dc])=>{
+                            const nr = r+dr;
+                            const nc = c+dc;
+                            if(this.atoms[nr] && this.atoms[nr][nc]){
+                                this.springs.push({
+                                    atoms:[atom, this.atoms[nr][nc]],
+                                    neutralLength: dr * dc == 0 ? ATOM_SPACING : Math.sqrt(2)*ATOM_SPACING,
+                                    k: INTEGRITY_K,
+                                })
+                            }
+                        })
+                    });
+                })
+                this.atoms = this.atoms.flat().filter(a => a);
+            }
+        }
+
+        let crystals = [
+            new Crystal(10, 500, [Array.from({length:7},()=>1)],true),
+            new Crystal(190, 240, [[0,1,0],[1,1,1]]),
+            new Crystal(100, 10, [[1,0,0],[1,1,1]]),
+            //new Crystal(90, 260, [[1,1],[1,0],[1,0]]),
+        ];
+        let userForce = {x:0,y:0};
+        let mousePos = {x:0,y:0}
+        let draggingPoint = null;
+
+        function updateInitForces(){
+            crystals.forEach(crystal => {
+                crystal.atoms.forEach(atom => {atom.f = {x:0,y:+GRAVITY}});
+            });
+            const crystal = crystals.at(-1);
+            if(draggingPoint){
+                draggingPoint.f = plus(draggingPoint.f, scale(400*GRAVITY*0.7, normalize(minus(mousePos,draggingPoint.pos))));
+            }
+        }
+        function updateInternalForces(){
+            crystals.forEach(crystal => {
+                crystal.springs.forEach(spring => {
+                    const diff = minus(spring.atoms[1].pos,spring.atoms[0].pos);
+                    const len = length(diff);
+                    const dir = scale(1/len, diff);
+                    const force = scale(spring.k * (len-spring.neutralLength), dir);
+                    spring.atoms[0].f = plus(spring.atoms[0].f, force);
+                    spring.atoms[1].f = minus(spring.atoms[1].f, force);
+                });
+            });
+        }
+        function updateCollisionForces(){
+            let grid = new Map();
+            const quantize = x => Math.floor(x / COLLISION_NEUTRAL_LENGTH);
+            crystals.forEach(crystal=>{
+                crystal.boundary.forEach(atom => {
+                    const x = quantize(atom.pos.x);
+                    if(!grid.has(x))grid.set(x,new Map());
+                    const y = quantize(atom.pos.y);
+                    if(!grid.get(x).has(y))grid.get(x).set(y,[]);
+                    grid.get(x).get(y).push({atom,crystal});
+                });
+            })
+            for(const [x, row] of grid){
+                for(const [y, atoms] of row){
+                    [[-1,0],[-1,-1],[0,-1],[1,-1],[0,0]].forEach(([dx,dy])=>{
+                        const nx = x + dx;
+                        const ny = y + dy;
+                        if(grid.has(nx) && grid.get(nx).has(ny)){
+                            const otherAtoms = grid.get(nx).get(ny);
+                            atoms.forEach(({atom:atom0, crystal:crystal0}) =>{
+                                otherAtoms.forEach(({atom:atom1, crystal:crystal1}) => {
+                                    if(crystal0==crystal1)return;
+                                    const diff = minus(atom1.pos,atom0.pos);
+                                    const len = length(diff);
+                                    if(len>=COLLISION_NEUTRAL_LENGTH)return;
+                                    const dir = scale(1/len, diff);
+                                    const force = scale(COLLISION_K * (len-COLLISION_NEUTRAL_LENGTH), dir);
+                                    atom0.f = plus(atom0.f, force);
+                                    atom1.f = minus(atom1.f, force);        
+                                })
+                            })
+                        }
+                    })
+                }
+            }
+            /*
+            crystals.forEach(crystal0 => {
+                crystals.forEach(crystal1 => {
+                    if(crystal0 == crystal1)return;
+                    crystal0.boundary.forEach(atom0 => {
+                        crystal1.boundary.forEach(atom1 => {
+                            const diff = minus(atom1.pos,atom0.pos);
+                            const len = length(diff);
+                            if(len>=COLLISION_NEUTRAL_LENGTH)return;
+                            const dir = scale(1/len, diff);
+                            const force = scale(COLLISION_K * (len-COLLISION_NEUTRAL_LENGTH), dir);
+                            atom0.f = plus(atom0.f, force);
+                            atom1.f = minus(atom1.f, force);
+                        });
+                    });
+                });
+            });
+            */
+        }
+        function update() {
+            updateInitForces();
+            updateInternalForces();
+            updateCollisionForces();
+            crystals.forEach(crystal => {
+                if(crystal.fixed)return;
+                crystal.atoms.forEach(atom => {
+                    atom.v = plus(atom.v, scale(dt/atom.m, atom.f));
+                    atom.v = scale(DRAG,atom.v);
+                    atom.pos = plus(atom.pos, scale(dt, atom.v));
+                });
+            });
+        }
+
+        function draw() {
+            ctx.fillStyle = "black";
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.lineWidth = 1;
+            ctx.strokeStyle = "green";
+            crystals.forEach(crystal => {
+                crystal.springs.forEach(spring => {
+                    ctx.beginPath();
+                    ctx.moveTo(spring.atoms[0].pos.x, spring.atoms[0].pos.y);
+                    ctx.lineTo(spring.atoms[1].pos.x, spring.atoms[1].pos.y);
+                    ctx.stroke();
+                })
+            });
+            const RADIUS = 2;
+            const drawBall = atom => {
+                ctx.beginPath();
+                ctx.arc(atom.pos.x, atom.pos.y, RADIUS, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            crystals.forEach(crystal => {
+                ctx.fillStyle = "blue";
+                crystal.atoms.forEach(drawBall)
+                ctx.fillStyle = "red";
+                crystal.boundary.forEach(drawBall)
+            });
+            if(draggingPoint){
+                ctx.fillStyle = "yellow";
+                drawBall(draggingPoint);
+            }
+        }
+
+        function loop() {
+            for(let i=0;i<100;++i)
+            update();
+            draw();
+            requestAnimationFrame(loop);
+        }
+        loop();
+        canvas.addEventListener("mousedown", (e) => {
+            mousePos = {
+                x:e.clientX - canvas.offsetLeft,
+                y:e.clientY - canvas.offsetTop,
+            };
+            draggingPoint = crystals.at(-1).atoms.reduce((nearest, atom) => {
+                return (!nearest || distance(atom.pos, mousePos) < distance(nearest.pos, mousePos)) ? atom : nearest;
+            }, null);
+            if(distance(draggingPoint,mousePos)>5){
+                draggingPoint = null;
+            }
+        });
+
+        canvas.addEventListener("mousemove", (e) => {
+            mousePos = {
+                x:e.clientX - canvas.offsetLeft,
+                y:e.clientY - canvas.offsetTop,
+            };
+        });
+
+        canvas.addEventListener("mouseup", () => { draggingPoint = null; });
+
+        document.body.addEventListener('keydown',(e)=>{
+            userForce = {
+                'ArrowLeft':{x:-1,y:0},
+                'ArrowRight':{x:+1,y:0},
+                'ArrowUp':{x:0,y:-1},
+                'ArrowDown':{x:0,y:1},
+            }[e.key] || {x:0,y:0};
+        })
+        document.body.addEventListener('keyup',(e)=>{
+            userForce = {x:0,y:0};
+        });
+    </script>
+</body>
+</html>
