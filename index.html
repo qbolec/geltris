@@ -18,7 +18,7 @@
         canvas.height = 600;
 
         const ATOMS_PER_CELL = 10;
-        const ATOM_SPACING = 8;
+        const ATOM_SPACING = 4;
         const GRAVITY = 20;
         const DRAG = 0.999;
         const INTEGRITY_K = 10000;
@@ -34,7 +34,21 @@
         const normalize = p => scale(1.0/length(p),p);
         const deg2rad = d => Math.PI*d/180;
         const polar = (a,r) => ({x:Math.cos(a)*r,y:Math.sin(a)*r});
-       
+        const SHAPES = [
+            [[1,1,1,1]],
+
+            [[1,1,0],
+             [0,1,1]],
+
+            [[1,1],
+             [1,1]],
+
+            [[0,1,1],
+             [1,1,0]],
+
+            [[1,1,1],
+             [0,1,0]],
+        ];
         class Atom {
             constructor(x, y, m = 1) {
                 this.pos = {x,y};
@@ -44,19 +58,19 @@
             }
         }
         class Crystal {
-            constructor(x,y, bitmap, fixed=false){
+            constructor(x,y, bitmap, fixed=false, apc=ATOMS_PER_CELL){
                 this.fixed = fixed;
                 this.atoms = [];
                 bitmap.forEach((stripe,row)=>{
-                    for(let r=0;r<ATOMS_PER_CELL;++r){
-                        this.atoms[row*ATOMS_PER_CELL+r]=[];
+                    for(let r=0;r<apc;++r){
+                        this.atoms[row*apc+r]=[];
                     }
                     stripe.forEach((pixel, column)=>{
-                        for(let r=0;r<ATOMS_PER_CELL;++r){
-                            for(let c=0;c<ATOMS_PER_CELL;++c){
-                                this.atoms[row*ATOMS_PER_CELL+r][column*ATOMS_PER_CELL+c]=pixel ? new Atom(
-                                    x + (column*ATOMS_PER_CELL+c)*ATOM_SPACING, 
-                                    y + (row*ATOMS_PER_CELL+r)*ATOM_SPACING
+                        for(let r=0;r<apc;++r){
+                            for(let c=0;c<apc;++c){
+                                this.atoms[row*apc+r][column*apc+c]=pixel ? new Atom(
+                                    x + (column*apc+c)*ATOM_SPACING, 
+                                    y + (row*apc+r)*ATOM_SPACING
                                 ): null;
                             }
                         }
@@ -92,7 +106,9 @@
         }
 
         let crystals = [
-            new Crystal(10, 500, [Array.from({length:7},()=>1)],true),
+            new Crystal(0, 600, [Array.from({length:150},()=>1)],true,1),
+            new Crystal(0, 0, Array.from({length:150},()=>[1]),true,1),
+            new Crystal(600, 0, Array.from({length:150},()=>[1]),true,1),
             new Crystal(190, 240, [[0,1,0],[1,1,1]]),
             new Crystal(100, 10, [[1,0,0],[1,1,1]]),
             //new Crystal(90, 260, [[1,1],[1,0],[1,0]]),
@@ -134,6 +150,7 @@
                     grid.get(x).get(y).push({atom,crystal});
                 });
             })
+            let hit = false;
             for(const [x, row] of grid){
                 for(const [y, atoms] of row){
                     [[-1,0],[-1,-1],[0,-1],[1,-1],[0,0]].forEach(([dx,dy])=>{
@@ -147,6 +164,9 @@
                                     const diff = minus(atom1.pos,atom0.pos);
                                     const len = length(diff);
                                     if(len>=COLLISION_NEUTRAL_LENGTH)return;
+                                    if(crystal0 === crystals.at(-1) || crystal1 == crystals.at(-1)){
+                                        hit = true;
+                                    }
                                     const dir = scale(1/len, diff);
                                     const force = scale(COLLISION_K * (len-COLLISION_NEUTRAL_LENGTH), dir);
                                     atom0.f = plus(atom0.f, force);
@@ -157,24 +177,9 @@
                     })
                 }
             }
-            /*
-            crystals.forEach(crystal0 => {
-                crystals.forEach(crystal1 => {
-                    if(crystal0 == crystal1)return;
-                    crystal0.boundary.forEach(atom0 => {
-                        crystal1.boundary.forEach(atom1 => {
-                            const diff = minus(atom1.pos,atom0.pos);
-                            const len = length(diff);
-                            if(len>=COLLISION_NEUTRAL_LENGTH)return;
-                            const dir = scale(1/len, diff);
-                            const force = scale(COLLISION_K * (len-COLLISION_NEUTRAL_LENGTH), dir);
-                            atom0.f = plus(atom0.f, force);
-                            atom1.f = minus(atom1.f, force);
-                        });
-                    });
-                });
-            });
-            */
+            if(hit){
+                crystals.push(new Crystal(200,0, SHAPES[Math.random()*SHAPES.length|0].map(row => row.slice(0))));
+            }
         }
         function update() {
             updateInitForces();
@@ -195,14 +200,14 @@
             ctx.fillRect(0, 0, canvas.width, canvas.height);
             ctx.lineWidth = 1;
             ctx.strokeStyle = "green";
-            crystals.forEach(crystal => {
-                crystal.springs.forEach(spring => {
-                    ctx.beginPath();
-                    ctx.moveTo(spring.atoms[0].pos.x, spring.atoms[0].pos.y);
-                    ctx.lineTo(spring.atoms[1].pos.x, spring.atoms[1].pos.y);
-                    ctx.stroke();
-                })
-            });
+            // crystals.forEach(crystal => {
+            //     crystal.springs.forEach(spring => {
+            //         ctx.beginPath();
+            //         ctx.moveTo(spring.atoms[0].pos.x, spring.atoms[0].pos.y);
+            //         ctx.lineTo(spring.atoms[1].pos.x, spring.atoms[1].pos.y);
+            //         ctx.stroke();
+            //     })
+            // });
             const RADIUS = 2;
             const drawBall = atom => {
                 ctx.beginPath();
@@ -211,7 +216,7 @@
             }
             crystals.forEach(crystal => {
                 ctx.fillStyle = "blue";
-                crystal.atoms.forEach(drawBall)
+                // crystal.atoms.forEach(drawBall)
                 ctx.fillStyle = "red";
                 crystal.boundary.forEach(drawBall)
             });
