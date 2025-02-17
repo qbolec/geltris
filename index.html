@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Physics Simulator</title>
+    <title>Geltris</title>
     <style>
         body { margin: 0; display: flex; justify-content: center; align-items: center; height: 100vh; background: #f0f0f0; }
         canvas { background: white; }
@@ -17,13 +17,14 @@
         canvas.width = 600;
         canvas.height = 600;
 
-        const ATOMS_PER_CELL = 10;
-        const ATOM_SPACING = 4;
+        const ATOMS_PER_CELL = 5;
+        const ATOM_SPACING = 8;
         const GRAVITY = 20;
         const DRAG = 0.999;
         const INTEGRITY_K = 10000;
         const COLLISION_K = INTEGRITY_K;
         const COLLISION_NEUTRAL_LENGTH = ATOM_SPACING;
+        const USER_STRENGTH = 4*ATOMS_PER_CELL*ATOMS_PER_CELL*GRAVITY*0.7;
         const dt = 0.001;
         const plus = (a,b) => ({x:a.x+b.x,y:a.y+b.y});
         const minus = (a,b) => ({x:a.x-b.x,y:a.y-b.y});
@@ -49,6 +50,12 @@
             [[1,1,1],
              [0,1,0]],
         ];
+        const rotateShape = shape => shape[0].map((_,c) => shape.map((_,r) => shape[r][shape[0].length-1-c]));
+        function rotateNShape(shape,n){
+            if(n==0)return shape;
+            return rotateNShape(rotateShape(shape),n-1);
+        }
+
         class Atom {
             constructor(x, y, m = 1) {
                 this.pos = {x,y};
@@ -123,7 +130,7 @@
             });
             const crystal = crystals.at(-1);
             if(draggingPoint){
-                draggingPoint.f = plus(draggingPoint.f, scale(400*GRAVITY*0.7, normalize(minus(mousePos,draggingPoint.pos))));
+                draggingPoint.f = plus(draggingPoint.f, scale(USER_STRENGTH, normalize(minus(mousePos,draggingPoint.pos))));
             }
         }
         function updateInternalForces(){
@@ -178,7 +185,7 @@
                 }
             }
             if(hit){
-                crystals.push(new Crystal(200,0, SHAPES[Math.random()*SHAPES.length|0].map(row => row.slice(0))));
+                crystals.push(new Crystal(200,0, rotateNShape(SHAPES[Math.random()*SHAPES.length|0].map(row => row.slice(0)), Math.random()*4|0)));
             }
         }
         function update() {
@@ -215,8 +222,8 @@
                 ctx.fill();
             }
             crystals.forEach(crystal => {
-                ctx.fillStyle = "blue";
-                // crystal.atoms.forEach(drawBall)
+                ctx.fillStyle = "#c0c0ff";
+                crystal.atoms.forEach(drawBall)
                 ctx.fillStyle = "red";
                 crystal.boundary.forEach(drawBall)
             });
