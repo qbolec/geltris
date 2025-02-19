@@ -25,7 +25,8 @@
         const COLLISION_K = INTEGRITY_K;
         const COLLISION_NEUTRAL_LENGTH = ATOM_SPACING;
         const USER_STRENGTH = 4*ATOMS_PER_CELL*ATOMS_PER_CELL*GRAVITY*0.7;
-        const dt = 0.001;
+        const dt = 0.01;
+        const SIM_STEPS_PER_DISPLAY = 1;
         const plus = (a,b) => ({x:a.x+b.x,y:a.y+b.y});
         const minus = (a,b) => ({x:a.x-b.x,y:a.y-b.y});
         const scale = (s,p) => ({x:s*p.x,y:s*p.y});
@@ -65,7 +66,9 @@
             }
         }
         class Crystal {
+            static nextId = 0;
             constructor(x,y, bitmap, fixed=false, apc=ATOMS_PER_CELL){
+                this.id = Crystal.nextId++;
                 this.fixed = fixed;
                 this.atoms = [];
                 bitmap.forEach((stripe,row)=>{
@@ -118,7 +121,7 @@
             new Crystal(600, 0, Array.from({length:150},()=>[1]),true,1),
             new Crystal(190, 240, [[0,1,0],[1,1,1]]),
             new Crystal(100, 10, [[1,0,0],[1,1,1]]),
-            //new Crystal(90, 260, [[1,1],[1,0],[1,0]]),
+            new Crystal(90, 260, [[1,1],[1,0],[1,0]]),
         ];
         let userForce = {x:0,y:0};
         let mousePos = {x:0,y:0}
@@ -126,7 +129,7 @@
 
         function updateInitForces(){
             crystals.forEach(crystal => {
-                crystal.atoms.forEach(atom => {atom.f = {x:0,y:+GRAVITY}});
+                crystal.atoms.forEach(atom => {atom.f = {x:0,y:crystal.fixed?0:+GRAVITY}});
             });
             const crystal = crystals.at(-1);
             if(draggingPoint){
@@ -135,10 +138,11 @@
         }
         function updateInternalForces(){
             crystals.forEach(crystal => {
+                if(crystal.fixed)return;
                 crystal.springs.forEach(spring => {
                     const diff = minus(spring.atoms[1].pos,spring.atoms[0].pos);
                     const len = length(diff);
-                    const dir = scale(1/len, diff);
+                    const dir = scale(1/(len||1e-9), diff);
                     const force = scale(spring.k * (len-spring.neutralLength), dir);
                     spring.atoms[0].f = plus(spring.atoms[0].f, force);
                     spring.atoms[1].f = minus(spring.atoms[1].f, force);
@@ -167,39 +171,101 @@
                             const otherAtoms = grid.get(nx).get(ny);
                             atoms.forEach(({atom:atom0, crystal:crystal0}) =>{
                                 otherAtoms.forEach(({atom:atom1, crystal:crystal1}) => {
-                                    if(crystal0==crystal1)return;
+                                    if(crystal0===crystal1 || dx==0 && dy==0 && crystal1.id<=crystal0.id)return;
+                                    if(crystal0.fixed && crystal1.fixed)return;
                                     const diff = minus(atom1.pos,atom0.pos);
                                     const len = length(diff);
                                     if(len>=COLLISION_NEUTRAL_LENGTH)return;
                                     if(crystal0 === crystals.at(-1) || crystal1 == crystals.at(-1)){
                                         hit = true;
                                     }
-                                    const dir = scale(1/len, diff);
+                                    const dir = scale(1/(len||1e-9), diff);
                                     const force = scale(COLLISION_K * (len-COLLISION_NEUTRAL_LENGTH), dir);
-                                    atom0.f = plus(atom0.f, force);
-                                    atom1.f = minus(atom1.f, force);        
+                                    if(!crystal0.fixed){
+                                        atom0.f = plus(atom0.f, force);
+                                    }
+                                    if(!crystal1.fixed){
+                                        atom1.f = minus(atom1.f, force);        
+                                    }
                                 })
                             })
                         }
                     })
                 }
             }
+            return hit;
+        }
+        function computeForces(){
+            updateInitForces();
+            updateInternalForces();
+            return updateCollisionForces();
+        }
+        function getState(){
+            const state = new Map();
+            crystals.forEach(crystal => crystal.atoms.forEach(atom => {
+                state.set(atom, {
+                    pos: {...atom.pos},
+                    v: {...atom.v},
+                    f: {...atom.f},
+                });
+            }));
+            return state;
+        }
+        function setState(state){
+            crystals.forEach(crystal => crystal.atoms.forEach(atom => {
+                const save = state.get(atom);
+                atom.pos.x = save.pos.x;
+                atom.pos.y = save.pos.y;
+                atom.v.x = save.v.x;
+                atom.v.y = save.v.y;
+                atom.f.x = save.f.x;
+                atom.f.y = save.f.y;
+            }));
+        }
+        function update() {
+            const from=getState();
+            const hit = computeForces();
+            const k1=getState();
+            const combine = (d, derivativeSource) =>{
+                crystals.forEach(crystal => crystal.atoms.forEach(atom => {
+                    const origin = from.get(atom);
+                    const derivative = derivativeSource.get(atom);
+                    atom.pos = plus(origin.pos, scale(d,derivative.v));
+                    atom.v = plus(origin.v, scale(d/atom.m,derivative.f));
+                }));
+                computeForces();
+                return getState();
+            }
+            const k2 = combine(dt/2, k1);
+            const k3 = combine(dt/2, k2);
+            const k4 = combine(dt, k3);
+            crystals.forEach(crystal => crystal.atoms.forEach(atom => {
+                const origin = from.get(atom);
+                if(atom.fixed){
+                    atom.pos = {...origin.pos};
+                    atom.v = {...origin.v};
+                    return;
+                }
+                const ak1 = k1.get(atom);
+                const ak2 = k2.get(atom);
+                const ak3 = k3.get(atom);
+                const ak4 = k4.get(atom);
+                atom.pos = plus(origin.pos, scale(dt/6,plus(scale(2,plus(ak2.v, ak3.v)),plus(ak1.v, ak4.v))));
+                atom.v = plus(origin.v, scale(dt/atom.m/6,plus(scale(2,plus(ak2.f, ak3.f)),plus(ak1.f, ak4.f))));
+            }));
+            
+
             if(hit){
                 crystals.push(new Crystal(200,0, rotateNShape(SHAPES[Math.random()*SHAPES.length|0].map(row => row.slice(0)), Math.random()*4|0)));
             }
-        }
-        function update() {
-            updateInitForces();
-            updateInternalForces();
-            updateCollisionForces();
-            crystals.forEach(crystal => {
-                if(crystal.fixed)return;
-                crystal.atoms.forEach(atom => {
-                    atom.v = plus(atom.v, scale(dt/atom.m, atom.f));
-                    atom.v = scale(DRAG,atom.v);
-                    atom.pos = plus(atom.pos, scale(dt, atom.v));
-                });
-            });
+            // crystals.forEach(crystal => {
+            //     if(crystal.fixed)return;
+            //     crystal.atoms.forEach(atom => {
+            //         atom.v = plus(atom.v, scale(dt/atom.m, atom.f));
+            //         atom.v = scale(DRAG,atom.v);
+            //         atom.pos = plus(atom.pos, scale(dt, atom.v));
+            //     });
+            // });
         }
 
         function draw() {
@@ -232,11 +298,17 @@
                 drawBall(draggingPoint);
             }
         }
-
+        let frameAt = [];
         function loop() {
-            for(let i=0;i<100;++i)
-            update();
+            for(let i=0;i<SIM_STEPS_PER_DISPLAY;++i)
+                update();
             draw();
+            frameAt.push(Date.now());
+            if(frameAt.length > 10){
+                const fps = Math.round((frameAt.length-1)/(frameAt.at(-1)-frameAt[0])*1000);
+                document.title = fps;
+                frameAt.shift();
+            }
             requestAnimationFrame(loop);
         }
         loop();
