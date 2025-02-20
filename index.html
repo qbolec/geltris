@@ -19,14 +19,14 @@
 
         const ATOMS_PER_CELL = 5;
         const ATOM_SPACING = 8;
-        const GRAVITY = 30;
-        const DRAG = 0.3;
+        const GRAVITY = 50;
+        const DRAG = 0.5;
         const INTEGRITY_K = 10000;
         const COLLISION_K = INTEGRITY_K;
         const COLLISION_NEUTRAL_LENGTH = ATOM_SPACING;
         const USER_STRENGTH = 4*ATOMS_PER_CELL*ATOMS_PER_CELL*GRAVITY*0.7;
         const dt = 0.01;
-        const SIM_STEPS_PER_DISPLAY = 10;
+        const SIM_STEPS_PER_DISPLAY = 3;
         const plus = (a,b) => ({x:a.x+b.x,y:a.y+b.y});
         const minus = (a,b) => ({x:a.x-b.x,y:a.y-b.y});
         const scale = (s,p) => ({x:s*p.x,y:s*p.y});
@@ -212,7 +212,7 @@
                     crystal.atoms.forEach(atom => atoms.push(atom));
                 }
             });
-            const from = new Float32Array(4*atoms.length);
+            const from = new Float64Array(4*atoms.length);
             atoms.forEach((atom,i)=>{
                 from[i*4+0] = atom.pos.x;
                 from[i*4+1] = atom.pos.y;
@@ -221,7 +221,7 @@
             })
             const hit = computeForces();
             const getDerivatives = ()=>{
-                const k=new Float32Array(4*atoms.length);
+                const k=new Float64Array(4*atoms.length);
                 atoms.forEach((atom,i)=>{
                     k[i*4+0] = atom.v.x;
                     k[i*4+1] = atom.v.y;
@@ -230,14 +230,19 @@
                 })
                 return k;
             }
+            const setState = (c) => atoms.forEach((atom,i)=>{
+                atom.pos.x = c[i*4+0];
+                atom.pos.y = c[i*4+1];
+                atom.v.x   = c[i*4+2];
+                atom.v.y   = c[i*4+3];
+            });   
             const k1=getDerivatives();
             const combine = (d, derivativeSource) =>{
-                atoms.forEach((atom,i)=>{
-                    atom.pos.x = from[i*4+0]+d*derivativeSource[i*4+0];
-                    atom.pos.y = from[i*4+1]+d*derivativeSource[i*4+1];
-                    atom.v.x   = from[i*4+2]+d*derivativeSource[i*4+2];
-                    atom.v.y   = from[i*4+3]+d*derivativeSource[i*4+3];
-                });   
+                const c = new Float64Array(4*atoms.length);
+                for(let i=0;i<c.length;++i){
+                    c[i] = from[i]+d*derivativeSource[i];
+                }
+                setState(c);
                 computeForces();
                 return getDerivatives();
             }
@@ -245,13 +250,11 @@
             const k3 = combine(dt/2, k2);
             const k4 = combine(dt, k3);
             const dtby6 = dt/6;
-            atoms.forEach((atom,i)=>{
-                atom.pos.x = from[i*4+0]+ dtby6*(k1[i*4+0] + 2*(k2[i*4+0] + k3[i*4+0]) + k4[i*4+0]);
-                atom.pos.y = from[i*4+1]+ dtby6*(k1[i*4+1] + 2*(k2[i*4+1] + k3[i*4+1]) + k4[i*4+1]);
-                atom.v.x   = from[i*4+2]+ dtby6*(k1[i*4+2] + 2*(k2[i*4+2] + k3[i*4+2]) + k4[i*4+2]);
-                atom.v.y   = from[i*4+3]+ dtby6*(k1[i*4+3] + 2*(k2[i*4+3] + k3[i*4+3]) + k4[i*4+3]);
-            });   
-        
+            const c = new Float64Array(4*atoms.length);
+            for(let i=0;i<c.length;++i){
+                c[i] = from[i]+ dtby6*(k1[i] + 2*(k2[i] + k3[i]) + k4[i]);
+            }
+            setState(c);
             if(hit){
                 crystals.push(new Crystal(200,0, rotateNShape(SHAPES[Math.random()*SHAPES.length|0].map(row => row.slice(0)), Math.random()*4|0)));
             }
