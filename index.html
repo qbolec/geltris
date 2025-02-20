@@ -19,8 +19,8 @@
 
         const ATOMS_PER_CELL = 5;
         const ATOM_SPACING = 8;
-        const GRAVITY = 20;
-        const DRAG = 0.999;
+        const GRAVITY = 30;
+        const DRAG = 0.3;
         const INTEGRITY_K = 10000;
         const COLLISION_K = INTEGRITY_K;
         const COLLISION_NEUTRAL_LENGTH = ATOM_SPACING;
@@ -121,7 +121,7 @@
             new Crystal(600, 0, Array.from({length:150},()=>[1]),true,1),
             new Crystal(190, 240, [[0,1,0],[1,1,1]]),
             new Crystal(100, 10, [[1,0,0],[1,1,1]]),
-            new Crystal(90, 260, [[1,1],[1,0],[1,0]]),
+            // new Crystal(90, 260, [[1,1],[1,0],[1,0]]),
         ];
         let userForce = {x:0,y:0};
         let mousePos = {x:0,y:0}
@@ -129,7 +129,11 @@
 
         function updateInitForces(){
             crystals.forEach(crystal => {
-                crystal.atoms.forEach(atom => {atom.f = {x:0,y:crystal.fixed?0:+GRAVITY}});
+                crystal.atoms.forEach(atom => {
+                    atom.f = crystal.fixed?
+                        {x:0,y:0}:
+                        {x:-atom.v.x*DRAG,y:-atom.v.y*DRAG+GRAVITY}
+                });
             });
             const crystal = crystals.at(-1);
             if(draggingPoint){
