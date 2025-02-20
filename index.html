@@ -26,7 +26,7 @@
         const COLLISION_NEUTRAL_LENGTH = ATOM_SPACING;
         const USER_STRENGTH = 4*ATOMS_PER_CELL*ATOMS_PER_CELL*GRAVITY*0.7;
         const dt = 0.01;
-        const SIM_STEPS_PER_DISPLAY = 3;
+        const SIM_STEPS_PER_DISPLAY = 10;
         const plus = (a,b) => ({x:a.x+b.x,y:a.y+b.y});
         const minus = (a,b) => ({x:a.x-b.x,y:a.y-b.y});
         const scale = (s,p) => ({x:s*p.x,y:s*p.y});
@@ -212,49 +212,45 @@
                 }
             });
             const from = new Float32Array(3*2*atoms.length);
-            for(let i=0;i<atoms.length;++i){
-                const atom = atoms[i];
+            atoms.forEach((atom,i)=>{
                 from[i*6+0+0] = atom.pos.x;
                 from[i*6+0+1] = atom.pos.y;
                 from[i*6+2+0] = atom.v.x;
                 from[i*6+2+1] = atom.v.y;
-            }
+            })
             const hit = computeForces();
             const getDerivatives = ()=>{
                 const k=new Float32Array(3*2*atoms.length);
-                for(let i=0;i<atoms.length;++i){
-                    const atom = atoms[i];
+                atoms.forEach((atom,i)=>{
                     k[i*6+2+0] = atom.v.x;
                     k[i*6+2+1] = atom.v.y;
                     k[i*6+4+0] = atom.f.x;
                     k[i*6+4+1] = atom.f.y;
-                }
+                })
                 return k;
             }
             const k1=getDerivatives();
             const combine = (d, derivativeSource) =>{
-                for(let i=0;i<atoms.length;++i){
-                    const atom = atoms[i];
+                atoms.forEach((atom,i)=>{
                     atom.pos.x = from[i*6+0+0]+d*derivativeSource[i*6+2+0];
                     atom.pos.y = from[i*6+0+1]+d*derivativeSource[i*6+2+1];
                     const dbym = d/atom.m;
                     atom.v.x   = from[i*6+2+0]+dbym*derivativeSource[i*6+4+0];
                     atom.v.y   = from[i*6+2+1]+dbym*derivativeSource[i*6+4+1];
-                }   
+                });   
                 computeForces();
                 return getDerivatives();
             }
             const k2 = combine(dt/2, k1);
             const k3 = combine(dt/2, k2);
             const k4 = combine(dt, k3);
-            for(let i=0;i<atoms.length;++i){
-                const atom = atoms[i];
+            atoms.forEach((atom,i)=>{
                 atom.pos.x = from[i*6+0+0]+ dt*(k1[i*6+2+0] + 2*(k2[i*6+2+0] + k3[i*6+2+0]) + k4[i*6+2+0])/6;
                 atom.pos.y = from[i*6+0+1]+ dt*(k1[i*6+2+1] + 2*(k2[i*6+2+1] + k3[i*6+2+1]) + k4[i*6+2+1])/6;
                 const dtbym = dt/atom.m;
                 atom.v.x   = from[i*6+2+0]+ dtbym*(k1[i*6+4+0] + 2*(k2[i*6+4+0] + k3[i*6+4+0]) + k4[i*6+4+0])/6;
                 atom.v.y   = from[i*6+2+1]+ dtbym*(k1[i*6+4+1] + 2*(k2[i*6+4+1] + k3[i*6+4+1]) + k4[i*6+4+1])/6;
-            }   
+            });   
         
             if(hit){
                 crystals.push(new Crystal(200,0, rotateNShape(SHAPES[Math.random()*SHAPES.length|0].map(row => row.slice(0)), Math.random()*4|0)));
