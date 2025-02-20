@@ -5,8 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Geltris</title>
     <style>
-        body { margin: 0; display: flex; justify-content: center; align-items: center; height: 100vh; background: #f0f0f0; }
-        canvas { background: white; }
+        body { margin: 0; display: flex; justify-content: center; align-items: center; height: 100vh; background: black; }
+        canvas { background: white; cursor:pointer}
     </style>
 </head>
 <body>
@@ -26,7 +26,7 @@
         const COLLISION_NEUTRAL_LENGTH = ATOM_SPACING;
         const USER_STRENGTH = 4*ATOMS_PER_CELL*ATOMS_PER_CELL*GRAVITY*0.7;
         const dt = 0.01;
-        const SIM_STEPS_PER_DISPLAY = 1;
+        const SIM_STEPS_PER_DISPLAY = 3;
         const plus = (a,b) => ({x:a.x+b.x,y:a.y+b.y});
         const minus = (a,b) => ({x:a.x-b.x,y:a.y-b.y});
         const scale = (s,p) => ({x:s*p.x,y:s*p.y});
@@ -119,7 +119,7 @@
             new Crystal(0, 600, [Array.from({length:150},()=>1)],true,1),
             new Crystal(0, 0, Array.from({length:150},()=>[1]),true,1),
             new Crystal(600, 0, Array.from({length:150},()=>[1]),true,1),
-            new Crystal(190, 240, [[0,1,0],[1,1,1]]),
+            new Crystal(192, 240, [[0,1,0],[1,1,1]]),
             new Crystal(100, 10, [[1,0,0],[1,1,1]]),
             // new Crystal(90, 260, [[1,1],[1,0],[1,0]]),
         ];
@@ -204,79 +204,68 @@
             updateInternalForces();
             return updateCollisionForces();
         }
-        function getState(){
-            const state = new Map();
-            crystals.forEach(crystal => crystal.atoms.forEach(atom => {
-                state.set(atom, {
-                    pos: {...atom.pos},
-                    v: {...atom.v},
-                    f: {...atom.f},
-                });
-            }));
-            return state;
-        }
-        function setState(state){
-            crystals.forEach(crystal => crystal.atoms.forEach(atom => {
-                const save = state.get(atom);
-                atom.pos.x = save.pos.x;
-                atom.pos.y = save.pos.y;
-                atom.v.x = save.v.x;
-                atom.v.y = save.v.y;
-                atom.f.x = save.f.x;
-                atom.f.y = save.f.y;
-            }));
-        }
         function update() {
-            const from=getState();
+            const atoms = [];
+            crystals.forEach(crystal => {
+                if(!crystal.fixed){
+                    crystal.atoms.forEach(atom => atoms.push(atom));
+                }
+            });
+            const from = new Float32Array(3*2*atoms.length);
+            for(let i=0;i<atoms.length;++i){
+                const atom = atoms[i];
+                from[i*6+0+0] = atom.pos.x;
+                from[i*6+0+1] = atom.pos.y;
+                from[i*6+2+0] = atom.v.x;
+                from[i*6+2+1] = atom.v.y;
+            }
             const hit = computeForces();
-            const k1=getState();
+            const getDerivatives = ()=>{
+                const k=new Float32Array(3*2*atoms.length);
+                for(let i=0;i<atoms.length;++i){
+                    const atom = atoms[i];
+                    k[i*6+2+0] = atom.v.x;
+                    k[i*6+2+1] = atom.v.y;
+                    k[i*6+4+0] = atom.f.x;
+                    k[i*6+4+1] = atom.f.y;
+                }
+                return k;
+            }
+            const k1=getDerivatives();
             const combine = (d, derivativeSource) =>{
-                crystals.forEach(crystal => crystal.atoms.forEach(atom => {
-                    const origin = from.get(atom);
-                    const derivative = derivativeSource.get(atom);
-                    atom.pos = plus(origin.pos, scale(d,derivative.v));
-                    atom.v = plus(origin.v, scale(d/atom.m,derivative.f));
-                }));
+                for(let i=0;i<atoms.length;++i){
+                    const atom = atoms[i];
+                    atom.pos.x = from[i*6+0+0]+d*derivativeSource[i*6+2+0];
+                    atom.pos.y = from[i*6+0+1]+d*derivativeSource[i*6+2+1];
+                    const dbym = d/atom.m;
+                    atom.v.x   = from[i*6+2+0]+dbym*derivativeSource[i*6+4+0];
+                    atom.v.y   = from[i*6+2+1]+dbym*derivativeSource[i*6+4+1];
+                }   
                 computeForces();
-                return getState();
+                return getDerivatives();
             }
             const k2 = combine(dt/2, k1);
             const k3 = combine(dt/2, k2);
             const k4 = combine(dt, k3);
-            crystals.forEach(crystal => crystal.atoms.forEach(atom => {
-                const origin = from.get(atom);
-                if(atom.fixed){
-                    atom.pos = {...origin.pos};
-                    atom.v = {...origin.v};
-                    return;
-                }
-                const ak1 = k1.get(atom);
-                const ak2 = k2.get(atom);
-                const ak3 = k3.get(atom);
-                const ak4 = k4.get(atom);
-                atom.pos = plus(origin.pos, scale(dt/6,plus(scale(2,plus(ak2.v, ak3.v)),plus(ak1.v, ak4.v))));
-                atom.v = plus(origin.v, scale(dt/atom.m/6,plus(scale(2,plus(ak2.f, ak3.f)),plus(ak1.f, ak4.f))));
-            }));
-            
-
+            for(let i=0;i<atoms.length;++i){
+                const atom = atoms[i];
+                atom.pos.x = from[i*6+0+0]+ dt*(k1[i*6+2+0] + 2*(k2[i*6+2+0] + k3[i*6+2+0]) + k4[i*6+2+0])/6;
+                atom.pos.y = from[i*6+0+1]+ dt*(k1[i*6+2+1] + 2*(k2[i*6+2+1] + k3[i*6+2+1]) + k4[i*6+2+1])/6;
+                const dtbym = dt/atom.m;
+                atom.v.x   = from[i*6+2+0]+ dtbym*(k1[i*6+4+0] + 2*(k2[i*6+4+0] + k3[i*6+4+0]) + k4[i*6+4+0])/6;
+                atom.v.y   = from[i*6+2+1]+ dtbym*(k1[i*6+4+1] + 2*(k2[i*6+4+1] + k3[i*6+4+1]) + k4[i*6+4+1])/6;
+            }   
+        
             if(hit){
                 crystals.push(new Crystal(200,0, rotateNShape(SHAPES[Math.random()*SHAPES.length|0].map(row => row.slice(0)), Math.random()*4|0)));
             }
-            // crystals.forEach(crystal => {
-            //     if(crystal.fixed)return;
-            //     crystal.atoms.forEach(atom => {
-            //         atom.v = plus(atom.v, scale(dt/atom.m, atom.f));
-            //         atom.v = scale(DRAG,atom.v);
-            //         atom.pos = plus(atom.pos, scale(dt, atom.v));
-            //     });
-            // });
         }
 
         function draw() {
             ctx.fillStyle = "black";
             ctx.fillRect(0, 0, canvas.width, canvas.height);
             ctx.lineWidth = 1;
-            ctx.strokeStyle = "green";
+            // ctx.strokeStyle = "green";
             // crystals.forEach(crystal => {
             //     crystal.springs.forEach(spring => {
             //         ctx.beginPath();
