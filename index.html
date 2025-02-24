@@ -6,7 +6,7 @@
     <title>Geltris</title>
     <style>
         body { margin: 0; display: flex; justify-content: center; align-items: center; height: 100vh; background: black; }
-        canvas { background: white; cursor:pointer; border:1px solid red; touch-action: none;}
+        canvas { background: white; cursor:pointer; border:1px solid red; }
     </style>
 </head>
 <body>
@@ -438,6 +438,11 @@
             requestAnimationFrame(loop);
         }
         loop();
+        
+        canvas.addEventListener("touchstart", (e)  => e.preventDefault(), { passive: false });
+        canvas.addEventListener("touchend", (e)  => e.preventDefault(), { passive: false });
+        canvas.addEventListener("touchmove", (e)  => e.preventDefault(), { passive: false });
+
         canvas.addEventListener("mousedown", (e) => {
             mousePos = {
                 x:e.clientX - canvas.offsetLeft,
@@ -456,6 +461,7 @@
                 x:e.clientX - canvas.offsetLeft,
                 y:e.clientY - canvas.offsetTop,
             };
+            e.preventDefault();
         });
 
         document.body.addEventListener("mouseup", () => { draggingPoint = null; });
