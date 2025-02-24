@@ -15,125 +15,68 @@
         const ctx = canvas.getContext("2d");
         document.body.appendChild(canvas);
         canvas.width = 416;
-        canvas.height = 600;
-
-
-        class LightningEffect {
-            constructor(canvas) {
-                this.canvas = canvas;
-                this.ctx = canvas.getContext('2d');
-                this.animationStartTime = null;
-                this.activeY = null;
-                this.animationDuration = 500; // 30s for slow motion
-                this.animationFrame = null;
+        canvas.height = 600;        
+        function drawLightningEffect(y, progress) {            
+            // Main lightning bolt
+            const numZigs = 8;
+            
+            // Multiple layers of lightning with different characteristics
+            for (let layer = 0; layer < 4; layer++) {
+                const offset = layer * 2 * Math.PI / 3; // Offset each layer's phase
+                const width = (3 - layer) * 4; // Varying widths
+                const amplitude = (layer+1)*10 * (1 - progress); // Reduces amplitude over time
+                const waveLength = 1000/(layer+1);
+                const frequency = (1+layer);
+                ctx.beginPath();
+                ctx.moveTo(0, y);
                 
-                this.animate = this.animate.bind(this);
-            }
-
-            drawLightningEffect(progress) {
-                const ctx = this.ctx;
-                const y = this.activeY;
-                
-                // Main lightning bolt
-                const numZigs = 8;
-                
-                // Multiple layers of lightning with different characteristics
-                for (let layer = 0; layer < 4; layer++) {
-                    const offset = layer * 2 * Math.PI / 3; // Offset each layer's phase
-                    const width = (3 - layer) * 4; // Varying widths
-                    const amplitude = (layer+1)*10 * (1 - progress); // Reduces amplitude over time
-                    const waveLength = 1000/(layer+1);
-                    const frequency = (1+layer);
-                    ctx.beginPath();
-                    ctx.moveTo(0, y);
+                // Draw zigzag pattern
+                for (let i = 0; i <= numZigs; i++) {
+                    // this.canvas.width/waveLength waves in numZigs,
+                    const x = (canvas.width * i) / numZigs;
+                    const wiggle = amplitude * Math.sin(i/numZigs * canvas.width/waveLength * Math.PI*2 + offset + progress * frequency * Math.PI*2);
+                    const yOffset = y + wiggle;
                     
-                    // Draw zigzag pattern
-                    for (let i = 0; i <= numZigs; i++) {
-                        // this.canvas.width/waveLength waves in numZigs,
-                        const x = (this.canvas.width * i) / numZigs;
-                        const wiggle = amplitude * Math.sin(i/numZigs * this.canvas.width/waveLength * Math.PI*2 + offset + progress * frequency * Math.PI*2);
-                        const yOffset = y + wiggle;
-                        
-                        if (i === 0) {
-                            ctx.moveTo(x, yOffset);
-                        } else {
-                            // Add some curved randomness
-                            const cp1x = x - this.canvas.width / (numZigs * 2);
-                            const cp1y = yOffset + (Math.sin(progress) + Math.random()) * 20 - 10;
-                            ctx.quadraticCurveTo(cp1x, cp1y, x, yOffset);
-                        }
+                    if (i === 0) {
+                        ctx.moveTo(x, yOffset);
+                    } else {
+                        // Add some curved randomness
+                        const cp1x = x - canvas.width / (numZigs * 2);
+                        const cp1y = yOffset + (Math.sin(progress) + Math.random()) * 20 - 10;
+                        ctx.quadraticCurveTo(cp1x, cp1y, x, yOffset);
                     }
-                    
-                    // Color gradient based on layer and progress
-                    const alpha = Math.max(0, 1 - progress * 2);
-                    const colors = [
-                        `rgba(100, 105, 255, ${alpha})`, // BLue
-                        `rgba(255, 255, 255, ${alpha})`, // White
-                        `rgba(255, 255, 0, ${alpha})`,   // Yellow
-                        `rgba(255, 165, 0, ${alpha})`,   // Orange
-                    ];
-                    
-                    ctx.strokeStyle = colors[layer];
-                    ctx.lineWidth = width * (1 - progress * 0.5); // Reduce width over time
-                    ctx.stroke();
                 }
                 
-                // Add particle effects
-                const numParticles = 200;
-                for (let i = 0; i < numParticles; i++) {
-                    const dx = Math.sin(i*i)*200;
-                    const dy = Math.cos(i*i)*200;
-                    const sx = this.canvas.width * (i / numParticles);
-                    const sy = y ;
-                    const px = sx + dx * progress;
-                    const py = sy + dy * progress + 200*progress*progress;
-                    
-                    ctx.beginPath();
-                    ctx.arc(px, py, (1 + (Math.sin(i)+i)%3 - progress), 0, Math.PI * 2);
-                    ctx.fillStyle = `hsla(${280+Math.abs(Math.cos(i))*progress*150} 100% 50% / ${(1 - progress)})`;
-                    ctx.fill();
-                }
+                // Color gradient based on layer and progress
+                const alpha = Math.max(0, 1 - progress * 2);
+                const colors = [
+                    `rgba(100, 105, 255, ${alpha})`, // BLue
+                    `rgba(255, 255, 255, ${alpha})`, // White
+                    `rgba(255, 255, 0, ${alpha})`,   // Yellow
+                    `rgba(255, 165, 0, ${alpha})`,   // Orange
+                ];
+                
+                ctx.strokeStyle = colors[layer];
+                ctx.lineWidth = width * (1 - progress * 0.5); // Reduce width over time
+                ctx.stroke();
             }
-
-            animate(timestamp) {
-                if (!this.animationStartTime) return;
+            
+            // Add particle effects
+            const numParticles = 200;
+            for (let i = 0; i < numParticles; i++) {
+                const dx = Math.sin(i*i)*200;
+                const dy = Math.cos(i*i)*200;
+                const sx = canvas.width * (i / numParticles);
+                const sy = y ;
+                const px = sx + dx * progress;
+                const py = sy + dy * progress + 200*progress*progress;
                 
-                const elapsed = timestamp - this.animationStartTime;
-                const progress = Math.min(elapsed / this.animationDuration, 1);
-                
-                
-                // Draw lightning effect
-                this.drawLightningEffect(progress);
-                
-                if (progress < 1) {
-                    this.animationFrame = requestAnimationFrame(this.animate);
-                } else {
-                    this.stop();
-                }
-            }
-
-            trigger(y) {
-                if (this.animationStartTime !== null) return;
-                
-                this.activeY = y;
-                this.animationStartTime = performance.now();
-                this.animationFrame = requestAnimationFrame(this.animate);
-            }
-
-            stop() {
-                if (this.animationFrame) {
-                    cancelAnimationFrame(this.animationFrame);
-                }
-                this.animationStartTime = null;
-                this.activeY = null;
-                this.animationFrame = null;
-                
-                // Re-enable button
-                document.getElementById('trigger').disabled = false;
+                ctx.beginPath();
+                ctx.arc(px, py, (1 + (Math.sin(i)+i)%3 - progress), 0, Math.PI * 2);
+                ctx.fillStyle = `hsla(${280+Math.abs(Math.cos(i))*progress*150} 100% 50% / ${(1 - progress)})`;
+                ctx.fill();
             }
         }
-
-        const effect = new LightningEffect(canvas);
 
         const ATOMS_PER_CELL = 5;
         const ATOM_SPACING = 8;
@@ -178,6 +121,7 @@
         class Atom {
             constructor(x, y, m = 1) {
                 this.pos = {x,y};
+                this.originalPos = {x,y};
                 this.v = {x:0,y:0};
                 this.f = {x:0,y:0};
                 this.m = m;
@@ -186,17 +130,22 @@
         }
         class Crystal {
             static nextId = 0;
-            constructor(x,y, bitmap, apc=ATOMS_PER_CELL){
+            constructor(atoms, springs, boundary){
                 this.id = Crystal.nextId++;
-                this.atoms = [];
+                this.atoms = atoms;
+                this.springs = springs;
+                this.boundary = boundary;
+            }
+            static fromBitmap(x,y, bitmap, apc=ATOMS_PER_CELL){
+                let atoms = [];
                 bitmap.forEach((stripe,row)=>{
                     for(let r=0;r<apc;++r){
-                        this.atoms[row*apc+r]=[];
+                        atoms[row*apc+r]=[];
                     }
                     stripe.forEach((pixel, column)=>{
                         for(let r=0;r<apc;++r){
                             for(let c=0;c<apc;++c){
-                                this.atoms[row*apc+r][column*apc+c]=pixel ? new Atom(
+                                atoms[row*apc+r][column*apc+c]=pixel ? new Atom(
                                     x + (column*apc+c)*ATOM_SPACING, 
                                     y + (row*apc+r)*ATOM_SPACING
                                 ): null;
@@ -204,24 +153,24 @@
                         }
                     })
                 })
-                this.springs = [];
-                this.boundary = [];
-                this.atoms.forEach((stripe, r)=>{
+                const springs = [];
+                const boundary = [];
+                atoms.forEach((stripe, r)=>{
                     stripe.forEach((atom,c) => {
                         if(!atom)return;
                         if(![[-1,0],[1,0],[0,1],[0,-1]].every(([dr,dc])=>{
                             const nr = r+dr;
                             const nc = c+dc;
-                            return this.atoms[nr] && this.atoms[nr][nc];
+                            return atoms[nr] && atoms[nr][nc];
                         })){
-                            this.boundary.push(atom);
+                            boundary.push(atom);
                         }
                         [[-1,0],[0,-1],[-1,-1],[1,-1]].forEach(([dr,dc])=>{
                             const nr = r+dr;
                             const nc = c+dc;
-                            if(this.atoms[nr] && this.atoms[nr][nc]){
-                                this.springs.push({
-                                    atoms:[atom, this.atoms[nr][nc]],
+                            if(atoms[nr] && atoms[nr][nc]){
+                                springs.push({
+                                    atoms:[atom, atoms[nr][nc]],
                                     neutralLength: dr * dc == 0 ? ATOM_SPACING : Math.sqrt(2)*ATOM_SPACING,
                                     k: INTEGRITY_K,
                                 })
@@ -229,7 +178,7 @@
                         })
                     });
                 })
-                this.atoms = this.atoms.flat().filter(a => a);
+                return new Crystal(atoms.flat().filter(a => a), springs, boundary);
             }
         }
 
@@ -238,15 +187,77 @@
             // new Crystal(0, 0, Array.from({length:Math.floor(canvas.height/ATOM_SPACING)},()=>[1]),true,1),
             // new Crystal(canvas.width, 0, Array.from({length:Math.floor(canvas.height/ATOM_SPACING)},()=>[1]),true,1),
             // new Crystal(440, 140, [[1,1,1,1]]),
-            new Crystal(296, 140, [[1,1,0],[0,1,1]]),
-            new Crystal(212, 240, [[0,1,0],[1,1,1]]),
-            new Crystal(92, 10, [[1,0,0],[1,1,1]]),
-            new Crystal(10, 260, [[1,0],[1,0],[1,1]]),
+            Crystal.fromBitmap(296, 140, [[1,1,0],[0,1,1]]),
+            Crystal.fromBitmap(212, 240, [[0,1,0],[1,1,1]]),
+            Crystal.fromBitmap(92, 10, [[1,0,0],[1,1,1]]),
+            Crystal.fromBitmap(10, 260, [[1,0],[1,0],[1,1]]),
         ];
-        let userForce = {x:0,y:0};
+        let lightnings = [];
         let mousePos = {x:0,y:0}
         let draggingPoint = null;
-
+        function checkPoints(atoms){
+            const invSpacing = 1/ATOM_SPACING;
+            const byRow = Array.from({length:Math.ceil(canvas.height*invSpacing)+1},()=>[])
+            atoms.forEach(atom => {
+                const rowAtoms = byRow[Math.floor(atom.pos.y*invSpacing)]
+                if(rowAtoms)rowAtoms.push(atom);
+            })
+            const atomsNeeded = canvas.width*invSpacing*0.9;
+            const removed = new Set();
+            byRow.forEach((rowAtoms,row)=>{
+                if(!row ||  (rowAtoms.length + byRow[row-1].length<atomsNeeded)){
+                    return;
+                }
+                const path = rowAtoms.concat(byRow[row-1]).sort((a,b)=>a.pos.x-b.pos.x);
+                if(path.every((atom,i)=>{
+                    const lastX = i?path[i-1].pos.x:0;
+                    return atom.pos.x < lastX + ATOM_SPACING*1.2;
+                })){
+                    lightnings.push({y:(row-1)*ATOM_SPACING,startedAt:performance.now()});
+                    path.forEach(atom => removed.add(atom));
+                }
+            })
+            if(removed.size){
+                const newCrystals = [];
+                const oldCrystals = crystals.filter(crystal => {
+                    if(!crystal.atoms.some(atom => removed.has(atom))){
+                        return true;
+                    }
+                    const atoms = crystal.atoms.filter(atom => !removed.has(atom));
+                    const byOrig = new Map();
+                    const orig = (atom) =>`${atom.originalPos.x} ${atom.originalPos.y}`;
+                    atoms.forEach(atom => {
+                        byOrig.set(orig(atom),atom);
+                    })
+                    atoms.forEach(atom => {
+                        if(byOrig.delete(orig(atom))){
+                            const todo = [atom];
+                            const done = [];
+                            while(todo.length){
+                                const atom = todo.pop();
+                                done.push(atom);
+                                [[-1,0],[+1,0],[0,-1],[0,+1]].forEach(([dx,dy])=>{
+                                    const nx = atom.originalPos.x + ATOM_SPACING*dx;
+                                    const ny = atom.originalPos.y + ATOM_SPACING*dy;
+                                    const norig = `${nx} ${ny}`;
+                                    if(byOrig.has(norig)){
+                                        todo.push(byOrig.get(norig));
+                                        byOrig.delete(norig);
+                                    }
+                                })
+                            }
+                            const subset = new Map(done.map(atom => [atom,0]));
+                            const springs = crystal.springs.filter(({atoms:[from,to]})=>subset.has(from)&&subset.has(to));
+                            springs.forEach(spring => spring.atoms.forEach(atom => subset.set(atom,1+subset.get(atom))));
+                            const boundary = done.filter(atom => subset.get(atom)!=8);
+                            newCrystals.push(new Crystal(done, springs, boundary));
+                        }
+                    })
+                    return false;
+                })
+                crystals = newCrystals.concat(oldCrystals);
+            }
+        }
         function updateInitForces(){
             crystals.forEach(crystal => {
                 crystal.atoms.forEach(atom => {
@@ -373,8 +384,9 @@
                 c[i] = from[i]+ dtby6*(k1[i] + 2*(k2[i] + k3[i]) + k4[i]);
             }
             setState(c);
+            checkPoints(atoms);
             if(hit){
-                crystals.push(new Crystal(210,0, rotateNShape(SHAPES[Math.random()*SHAPES.length|0].map(row => row.slice(0)), Math.random()*4|0)));
+                crystals.push(Crystal.fromBitmap(210,0, rotateNShape(SHAPES[Math.random()*SHAPES.length|0].map(row => row.slice(0)), Math.random()*4|0)));
             }
         }
 
@@ -407,6 +419,10 @@
                 ctx.fillStyle = "yellow";
                 drawBall(draggingPoint);
             }
+            const now = performance.now();
+            const lightningDurationMs = 500;
+            lightnings = lightnings.filter(lightning => now < lightning.startedAt + lightningDurationMs);
+            lightnings.forEach(lightning => drawLightningEffect(lightning.y, (now-lightning.startedAt)/lightningDurationMs))
         }
         let frameAt = [];
         function loop() {
@@ -433,7 +449,6 @@
             if(distance(draggingPoint,mousePos)>5){
                 draggingPoint = null;
             }
-            effect.trigger(mousePos.y);
         });
 
         canvas.addEventListener("mousemove", (e) => {
@@ -443,19 +458,9 @@
             };
         });
 
-        canvas.addEventListener("mouseup", () => { draggingPoint = null; });
+        document.body.addEventListener("mouseup", () => { draggingPoint = null; });
 
-        document.body.addEventListener('keydown',(e)=>{
-            userForce = {
-                'ArrowLeft':{x:-1,y:0},
-                'ArrowRight':{x:+1,y:0},
-                'ArrowUp':{x:0,y:-1},
-                'ArrowDown':{x:0,y:1},
-            }[e.key] || {x:0,y:0};
-        })
-        document.body.addEventListener('keyup',(e)=>{
-            userForce = {x:0,y:0};
-        });
+        
     </script>
 </body>
 </html>
