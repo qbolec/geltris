@@ -438,33 +438,29 @@
             requestAnimationFrame(loop);
         }
         loop();
-        
-        canvas.addEventListener("touchstart", (e)  => e.preventDefault(), { passive: false });
-        canvas.addEventListener("touchend", (e)  => e.preventDefault(), { passive: false });
-        canvas.addEventListener("touchmove", (e)  => e.preventDefault(), { passive: false });
-
-        canvas.addEventListener("mousedown", (e) => {
+        function updateMousePos(e){
             mousePos = {
-                x:e.clientX - canvas.offsetLeft,
-                y:e.clientY - canvas.offsetTop,
+                x:(e.clientX||e.touches[0].clientX) - canvas.offsetLeft,
+                y:(e.clientY||e.touches[0].clientY) - canvas.offsetTop,
             };
+        }
+        
+        ["mousedown","touchstart"].forEach(eventName => canvas.addEventListener(eventName, (e) => {
+            updateMousePos(e);
             draggingPoint = crystals.at(-1).atoms.reduce((nearest, atom) => {
                 return (!nearest || distance(atom.pos, mousePos) < distance(nearest.pos, mousePos)) ? atom : nearest;
             }, null);
             if(distance(draggingPoint,mousePos)>5){
                 draggingPoint = null;
             }
-        });
+        }));
 
-        canvas.addEventListener("mousemove", (e) => {
-            mousePos = {
-                x:e.clientX - canvas.offsetLeft,
-                y:e.clientY - canvas.offsetTop,
-            };
+        ["mousemove","touchmove"].forEach(eventName => canvas.addEventListener(eventName, (e) => {
+            updateMousePos(e);
             e.preventDefault();
-        });
+        }));
 
-        document.body.addEventListener("mouseup", () => { draggingPoint = null; });
+        ["mouseup","touchend"].forEach(eventName => document.body.addEventListener(eventName, () => { draggingPoint = null; }));
 
         
     </script>
