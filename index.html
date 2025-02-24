@@ -6,7 +6,7 @@
     <title>Geltris</title>
     <style>
         body { margin: 0; display: flex; justify-content: center; align-items: center; height: 100vh; background: black; }
-        canvas { background: white; cursor:pointer}
+        canvas { background: white; cursor:pointer; border:1px solid red}
     </style>
 </head>
 <body>
@@ -14,13 +14,131 @@
         const canvas = document.createElement("canvas");
         const ctx = canvas.getContext("2d");
         document.body.appendChild(canvas);
-        canvas.width = 600;
+        canvas.width = 416;
         canvas.height = 600;
+
+
+        class LightningEffect {
+            constructor(canvas) {
+                this.canvas = canvas;
+                this.ctx = canvas.getContext('2d');
+                this.animationStartTime = null;
+                this.activeY = null;
+                this.animationDuration = 500; // 30s for slow motion
+                this.animationFrame = null;
+                
+                this.animate = this.animate.bind(this);
+            }
+
+            drawLightningEffect(progress) {
+                const ctx = this.ctx;
+                const y = this.activeY;
+                
+                // Main lightning bolt
+                const numZigs = 8;
+                
+                // Multiple layers of lightning with different characteristics
+                for (let layer = 0; layer < 4; layer++) {
+                    const offset = layer * 2 * Math.PI / 3; // Offset each layer's phase
+                    const width = (3 - layer) * 4; // Varying widths
+                    const amplitude = (layer+1)*10 * (1 - progress); // Reduces amplitude over time
+                    const waveLength = 1000/(layer+1);
+                    const frequency = (1+layer);
+                    ctx.beginPath();
+                    ctx.moveTo(0, y);
+                    
+                    // Draw zigzag pattern
+                    for (let i = 0; i <= numZigs; i++) {
+                        // this.canvas.width/waveLength waves in numZigs,
+                        const x = (this.canvas.width * i) / numZigs;
+                        const wiggle = amplitude * Math.sin(i/numZigs * this.canvas.width/waveLength * Math.PI*2 + offset + progress * frequency * Math.PI*2);
+                        const yOffset = y + wiggle;
+                        
+                        if (i === 0) {
+                            ctx.moveTo(x, yOffset);
+                        } else {
+                            // Add some curved randomness
+                            const cp1x = x - this.canvas.width / (numZigs * 2);
+                            const cp1y = yOffset + (Math.sin(progress) + Math.random()) * 20 - 10;
+                            ctx.quadraticCurveTo(cp1x, cp1y, x, yOffset);
+                        }
+                    }
+                    
+                    // Color gradient based on layer and progress
+                    const alpha = Math.max(0, 1 - progress * 2);
+                    const colors = [
+                        `rgba(100, 105, 255, ${alpha})`, // BLue
+                        `rgba(255, 255, 255, ${alpha})`, // White
+                        `rgba(255, 255, 0, ${alpha})`,   // Yellow
+                        `rgba(255, 165, 0, ${alpha})`,   // Orange
+                    ];
+                    
+                    ctx.strokeStyle = colors[layer];
+                    ctx.lineWidth = width * (1 - progress * 0.5); // Reduce width over time
+                    ctx.stroke();
+                }
+                
+                // Add particle effects
+                const numParticles = 200;
+                for (let i = 0; i < numParticles; i++) {
+                    const dx = Math.sin(i*i)*200;
+                    const dy = Math.cos(i*i)*200;
+                    const sx = this.canvas.width * (i / numParticles);
+                    const sy = y ;
+                    const px = sx + dx * progress;
+                    const py = sy + dy * progress + 200*progress*progress;
+                    
+                    ctx.beginPath();
+                    ctx.arc(px, py, (1 + (Math.sin(i)+i)%3 - progress), 0, Math.PI * 2);
+                    ctx.fillStyle = `hsla(${280+Math.abs(Math.cos(i))*progress*150} 100% 50% / ${(1 - progress)})`;
+                    ctx.fill();
+                }
+            }
+
+            animate(timestamp) {
+                if (!this.animationStartTime) return;
+                
+                const elapsed = timestamp - this.animationStartTime;
+                const progress = Math.min(elapsed / this.animationDuration, 1);
+                
+                
+                // Draw lightning effect
+                this.drawLightningEffect(progress);
+                
+                if (progress < 1) {
+                    this.animationFrame = requestAnimationFrame(this.animate);
+                } else {
+                    this.stop();
+                }
+            }
+
+            trigger(y) {
+                if (this.animationStartTime !== null) return;
+                
+                this.activeY = y;
+                this.animationStartTime = performance.now();
+                this.animationFrame = requestAnimationFrame(this.animate);
+            }
+
+            stop() {
+                if (this.animationFrame) {
+                    cancelAnimationFrame(this.animationFrame);
+                }
+                this.animationStartTime = null;
+                this.activeY = null;
+                this.animationFrame = null;
+                
+                // Re-enable button
+                document.getElementById('trigger').disabled = false;
+            }
+        }
+
+        const effect = new LightningEffect(canvas);
 
         const ATOMS_PER_CELL = 5;
         const ATOM_SPACING = 8;
         const GRAVITY = 50;
-        const DRAG = 0.5;
+        const DRAG = 0.9;
         const INTEGRITY_K = 10000;
         const COLLISION_K = INTEGRITY_K;
         const COLLISION_NEUTRAL_LENGTH = ATOM_SPACING;
@@ -68,9 +186,8 @@
         }
         class Crystal {
             static nextId = 0;
-            constructor(x,y, bitmap, fixed=false, apc=ATOMS_PER_CELL){
+            constructor(x,y, bitmap, apc=ATOMS_PER_CELL){
                 this.id = Crystal.nextId++;
-                this.fixed = fixed;
                 this.atoms = [];
                 bitmap.forEach((stripe,row)=>{
                     for(let r=0;r<apc;++r){
@@ -117,12 +234,14 @@
         }
 
         let crystals = [
-            new Crystal(0, 600, [Array.from({length:150},()=>1)],true,1),
-            new Crystal(0, 0, Array.from({length:150},()=>[1]),true,1),
-            new Crystal(600, 0, Array.from({length:150},()=>[1]),true,1),
-            new Crystal(192, 240, [[0,1,0],[1,1,1]]),
-            new Crystal(100, 10, [[1,0,0],[1,1,1]]),
-            // new Crystal(90, 260, [[1,1],[1,0],[1,0]]),
+            // new Crystal(0, canvas.height, [Array.from({length:Math.floor(canvas.width/ATOM_SPACING)},()=>1)],true,1),
+            // new Crystal(0, 0, Array.from({length:Math.floor(canvas.height/ATOM_SPACING)},()=>[1]),true,1),
+            // new Crystal(canvas.width, 0, Array.from({length:Math.floor(canvas.height/ATOM_SPACING)},()=>[1]),true,1),
+            // new Crystal(440, 140, [[1,1,1,1]]),
+            new Crystal(296, 140, [[1,1,0],[0,1,1]]),
+            new Crystal(212, 240, [[0,1,0],[1,1,1]]),
+            new Crystal(92, 10, [[1,0,0],[1,1,1]]),
+            new Crystal(10, 260, [[1,0],[1,0],[1,1]]),
         ];
         let userForce = {x:0,y:0};
         let mousePos = {x:0,y:0}
@@ -131,9 +250,16 @@
         function updateInitForces(){
             crystals.forEach(crystal => {
                 crystal.atoms.forEach(atom => {
-                    atom.f = crystal.fixed?
-                        {x:0,y:0}:
-                        {x:-atom.v.x*DRAG,y:-atom.v.y*DRAG+GRAVITY}
+                    atom.f = {x:-atom.v.x*DRAG,y:-atom.v.y*DRAG+GRAVITY}
+                    if(atom.pos.x<COLLISION_NEUTRAL_LENGTH){
+                        atom.f.x += COLLISION_K*(COLLISION_NEUTRAL_LENGTH-atom.pos.x);
+                    }
+                    if(canvas.width-COLLISION_NEUTRAL_LENGTH<atom.pos.x){
+                        atom.f.x -= COLLISION_K*(atom.pos.x-canvas.width+COLLISION_NEUTRAL_LENGTH);
+                    }
+                    if(canvas.height-COLLISION_NEUTRAL_LENGTH<atom.pos.y){
+                        atom.f.y -= COLLISION_K*(atom.pos.y-canvas.height+COLLISION_NEUTRAL_LENGTH);
+                    }
                 });
             });
             const crystal = crystals.at(-1);
@@ -143,12 +269,10 @@
         }
         function updateInternalForces(){
             crystals.forEach(crystal => {
-                if(crystal.fixed)return;
                 crystal.springs.forEach(spring => {
                     const diff = minus(spring.atoms[1].pos,spring.atoms[0].pos);
                     const len = length(diff);
-                    const dir = scale(1/(len||1e-9), diff);
-                    const force = scale(spring.k * (len-spring.neutralLength), dir);
+                    const force = scale(spring.k * (len-spring.neutralLength)/(len||1e-9), diff);
                     spring.atoms[0].f = plus(spring.atoms[0].f, force);
                     spring.atoms[1].f = minus(spring.atoms[1].f, force);
                 });
@@ -177,21 +301,17 @@
                             atoms.forEach(({atom:atom0, crystal:crystal0}) =>{
                                 otherAtoms.forEach(({atom:atom1, crystal:crystal1}) => {
                                     if(crystal0===crystal1 || dx==0 && dy==0 && crystal1.id<=crystal0.id)return;
-                                    if(crystal0.fixed && crystal1.fixed)return;
                                     const diff = minus(atom1.pos,atom0.pos);
                                     const len = length(diff);
                                     if(len>=COLLISION_NEUTRAL_LENGTH)return;
                                     if(crystal0 === crystals.at(-1) || crystal1 == crystals.at(-1)){
                                         hit = true;
                                     }
-                                    const dir = scale(1/(len||1e-9), diff);
-                                    const force = scale(COLLISION_K * (len-COLLISION_NEUTRAL_LENGTH), dir);
-                                    if(!crystal0.fixed){
-                                        atom0.f = plus(atom0.f, force);
-                                    }
-                                    if(!crystal1.fixed){
-                                        atom1.f = minus(atom1.f, force);        
-                                    }
+                                    const force = scale(COLLISION_K * (len-COLLISION_NEUTRAL_LENGTH)/(len||1e-9), diff);
+                                    atom0.f.x += force.x;
+                                    atom0.f.y += force.y;
+                                    atom1.f.x -= force.x;
+                                    atom1.f.y -= force.y;
                                 })
                             })
                         }
@@ -208,9 +328,7 @@
         function update() {
             const atoms = [];
             crystals.forEach(crystal => {
-                if(!crystal.fixed){
-                    crystal.atoms.forEach(atom => atoms.push(atom));
-                }
+                crystal.atoms.forEach(atom => atoms.push(atom));
             });
             const from = new Float64Array(4*atoms.length);
             atoms.forEach((atom,i)=>{
@@ -256,7 +374,7 @@
             }
             setState(c);
             if(hit){
-                crystals.push(new Crystal(200,0, rotateNShape(SHAPES[Math.random()*SHAPES.length|0].map(row => row.slice(0)), Math.random()*4|0)));
+                crystals.push(new Crystal(210,0, rotateNShape(SHAPES[Math.random()*SHAPES.length|0].map(row => row.slice(0)), Math.random()*4|0)));
             }
         }
 
@@ -315,6 +433,7 @@
             if(distance(draggingPoint,mousePos)>5){
                 draggingPoint = null;
             }
+            effect.trigger(mousePos.y);
         });
 
         canvas.addEventListener("mousemove", (e) => {
