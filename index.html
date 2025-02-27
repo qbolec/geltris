@@ -5,10 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Geltris</title>
     <style>
-        body { margin: 0; display: flex; justify-content: center; flex-direction: column; align-items: center; height: 100vh; background: black; }
-        canvas { background: white; cursor:pointer; border:1px solid red; }
-        #bar { width:416px; font-size:20px; height:25px; font-family:monospace; margin: auto; text-align: right;position: relative;}
-        #multiplier { color:lightgreen; transition: linear 1s;vertical-align: middle;}
+        body { margin: 0 auto; height: 100vh; width:calc(min(416px,100vw)); background: black; }
+        canvas { background: white; width:100%;cursor:pointer; border:1px solid red; margin:auto;display: block;}
+        #bar { width:100%; font-size:20px; height:25px; font-family:monospace; margin: auto; text-align: right;position: relative;}
+        #multiplier { color:lightgreen; transition: linear 1s;vertical-align: middle; }
         #score { color:red; transition: linear 1s;vertical-align: middle; }
         .big { font-size: 30px;}
     </style>
