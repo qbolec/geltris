@@ -5,17 +5,27 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Geltris</title>
     <style>
-        body { margin: 0; display: flex; justify-content: center; align-items: center; height: 100vh; background: black; }
+        body { margin: 0; display: flex; justify-content: center; flex-direction: column; align-items: center; height: 100vh; background: black; }
         canvas { background: white; cursor:pointer; border:1px solid red; }
+        #bar { width:416px; font-size:20px; height:25px; font-family:monospace; margin: auto; text-align: right;position: relative;}
+        #multiplier { color:lightgreen; transition: linear 1s;vertical-align: middle;}
+        #score { color:red; transition: linear 1s;vertical-align: middle; }
+        .big { font-size: 30px;}
     </style>
 </head>
 <body>
+    <div id=bar><span id=multiplier></span><span id=score>0</span></div>
     <script>
         const canvas = document.createElement("canvas");
         const ctx = canvas.getContext("2d");
         document.body.appendChild(canvas);
+        const multiplierEl = document.getElementById('multiplier');
+        const scoreEl = document.getElementById('score');
         canvas.width = 416;
         canvas.height = 600;        
+        let multiplier = 1;
+        let score = 0;
+        let lastScoreAt = 0;
         function drawLightningEffect(y, progress) {            
             // Main lightning bolt
             const numZigs = 8;
@@ -218,6 +228,14 @@
                 }
             })
             if(removed.size){
+                const now = lightnings.at(-1).startedAt; 
+                if(now < lastScoreAt + 2000){
+                    multiplier++;
+                }else{
+                    multiplier=1;
+                }
+                lastScoreAt = now;
+                score += removed.size * multiplier;
                 const newCrystals = [];
                 const oldCrystals = crystals.filter(crystal => {
                     if(!crystal.atoms.some(atom => removed.has(atom))){
@@ -435,6 +453,15 @@
                 document.title = fps;
                 frameAt.shift();
             }
+            const oldScore = +scoreEl.textContent;
+            if(score > oldScore){
+                scoreEl.textContent = oldScore + Math.ceil(Math.log2(1+score-oldScore));
+                scoreEl.className = 'big';
+            }else{
+                scoreEl.className = '';
+            }
+            
+            multiplierEl.textContent = (multiplier>1)?`${multiplier}×`:''
             requestAnimationFrame(loop);
         }
         loop();
