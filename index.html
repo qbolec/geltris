@@ -11,18 +11,20 @@
         #multiplier { color:lightgreen; transition: linear 1s;vertical-align: middle; }
         #score { color:red; transition: linear 1s;vertical-align: middle; }
         .big { font-size: 30px;}
+        button {border:1px solid red; background: black; color: red;}
     </style>
 </head>
 <body>
     <div id=bar><span id=multiplier></span><span id=score>0</span></div>
+    <canvas id=canvas width=416 height=600></canvas>
+    <button id=sound>Sound</button>
     <script>
-        const canvas = document.createElement("canvas");
+        const lightningDurationMs = 500;
+            
+        const canvas = document.getElementById("canvas");
         const ctx = canvas.getContext("2d");
-        document.body.appendChild(canvas);
         const multiplierEl = document.getElementById('multiplier');
         const scoreEl = document.getElementById('score');
-        canvas.width = 416;
-        canvas.height = 600;        
         let multiplier = 1;
         let score = 0;
         let lastScoreAt = 0;
@@ -438,21 +440,22 @@
                 drawBall(draggingPoint);
             }
             const now = performance.now();
-            const lightningDurationMs = 500;
             lightnings = lightnings.filter(lightning => now < lightning.startedAt + lightningDurationMs);
             lightnings.forEach(lightning => drawLightningEffect(lightning.y, (now-lightning.startedAt)/lightningDurationMs))
         }
         let frameAt = [];
+        let soundAt = [];
         function loop() {
             for(let i=0;i<SIM_STEPS_PER_DISPLAY;++i)
                 update();
             draw();
             frameAt.push(Date.now());
             if(frameAt.length > 10){
-                const fps = Math.round((frameAt.length-1)/(frameAt.at(-1)-frameAt[0])*1000);
-                document.title = fps;
                 frameAt.shift();
             }
+            const fps = Math.round((frameAt.length-1)/(frameAt.at(-1)-frameAt[0])*1000);
+            const sps = Math.round((soundAt.length-1)/(soundAt.at(-1)-soundAt[0])*1000);
+            // document.title = `${fps} ${sps}`;
             const oldScore = +scoreEl.textContent;
             if(score > oldScore){
                 scoreEl.textContent = oldScore + Math.ceil(Math.log2(1+score-oldScore));
@@ -489,7 +492,101 @@
 
         ["mouseup","touchend"].forEach(eventName => document.body.addEventListener(eventName, () => { draggingPoint = null; }));
 
-        
+        let audioContext;
+        let lastOffset = 0;
+        let frequencyRanges = [];
+        let amplitudeRanges = [];
+        let lastEnergies = [];
+        let lostEnergies = [];
+        let totalMasses = [];
+        function processAudio(audioProcessingEvent) {
+            const now = performance.now();
+            soundAt.push(now);
+            if(soundAt.length > 10){
+                soundAt.shift();
+            }
+            const outputBuffer = audioProcessingEvent.outputBuffer;
+            const outputData = outputBuffer.getChannelData(0);
+            const sampleRate = audioContext.sampleRate;
+            const sampleToRadians = Math.PI*2/sampleRate;
+            let systemEnergy = 0;
+            let totalMass = 0;
+            const sounds = crystals.map(crystal => {
+                let crystalSpeed = 0;
+                let crystalEnergy = 0;
+                let crystalForce = 0;
+                crystal.atoms.forEach(atom => {
+                    const speed=length(atom.v)
+                    const energy=speed*speed*atom.m/2;
+                    const force=length(atom.f);
+                    crystalSpeed += speed;
+                    crystalEnergy += energy;
+                    crystalForce += force;
+                    totalMass += atom.m;
+                })
+                systemEnergy += crystalEnergy;
+                return {
+                    amplitude: crystalEnergy,
+                    frequency: crystalForce,
+                }
+            })
+            totalMasses.push(totalMass);
+            const frequencies = sounds.map(sound=>sound.frequency);
+            const amplitudes = sounds.map(sound=>sound.amplitude);
+            lastEnergies.push(systemEnergy);
+            const energyLost = Math.max(0, (lastEnergies.at(-5)||0) - systemEnergy);
+            const massLost = Math.max(0, (totalMasses.at(-5)||0) - totalMass);
+            lostEnergies.push(energyLost);
+            frequencyRanges.push({min:Math.min(...frequencies),max:Math.max(...frequencies)});
+            amplitudeRanges.push({min:Math.min(...amplitudes),max:Math.max(...amplitudes)});
+            if(frequencyRanges.length>100){
+                lostEnergies.shift();
+                lastEnergies.shift();
+                frequencyRanges.shift();
+                amplitudeRanges.shift();
+                totalMasses.shift();
+            }
+            const lostEnergyRange = {min:Math.min(...lostEnergies), max:Math.max(...lostEnergies)}
+            const frequencyRange = {min:Math.min(...frequencyRanges.map(range=>range.min)),max:Math.max(...frequencyRanges.map(range=>range.max))}
+            const amplitudeRange = {min:Math.min(...amplitudeRanges.map(range=>range.min)),max:Math.max(...amplitudeRanges.map(range=>range.max))}
+            const remap = (x, r1, r2) => Math.max(r2.min,Math.min(r2.max,(x-r1.min)/(r1.max-r1.min)*(r2.max-r2.min)+r2.min))
+            sounds.forEach(sound=>{
+                sound.frequency = remap(sound.frequency, frequencyRange, {min:200, max:1000});
+                sound.amplitude = remap(sound.amplitude, amplitudeRange, {min:0, max:1});
+            })
+            const noise = remap(energyLost, {min:0, max:6000}, {min:0, max:1});
+            const boom = remap(massLost, {min:0, max:200}, {min:0, max: 1});
+            const strike = lightnings.reduce((acc,lightning)=> acc + (1-(now-lightning.startedAt)/lightningDurationMs), 0)
+            for (let sample = 0; sample < outputBuffer.length; sample++) {
+                lastOffset++;
+                // outputData[sample] = sounds.reduce((acc,sound)=> acc + sound.amplitude*Math.sin(lastOffset*sound.frequency*sampleToRadians),(Math.random()-0.5)*noise)  
+                // outputData[sample] = sounds.reduce((acc,sound)=> acc + sound.amplitude*Math.sin(lastOffset*sound.frequency*sampleToRadians),Math.sin(lastOffset*100*sampleToRadians)*noise)  
+                // outputData[sample] =  Math.sin(100+(100*strike)*lastOffset*sampleToRadians) + (Math.random()-0.5)*noise
+                outputData[sample] =  Math.sin((100*strike)*lastOffset*sampleToRadians) + Math.sin(lastOffset*150*sampleToRadians)*noise
+                // outputData[sample] =  Math.sin((300*strike)*lastOffset*sampleToRadians) + Math.sin(lastOffset*300*sampleToRadians)*noise
+                // outputData[sample] =  Math.sin(100*lastOffset*sampleToRadians)*(strike)
+                // outputData[sample] =  (Math.random()-0.5)*(boom)
+                // outputData[sample] = (Math.random()-0.5)*noise
+                // outputData[sample] = (Math.random()-0.5)*(noise+strike)
+                //outputData[sample] = Math.sin(lastOffset*440*sampleToRadians); 
+            }
+
+        }
+        function startAudio() {
+            if (audioContext) return;
+            
+            try {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                scriptNode = audioContext.createScriptProcessor(1024, 0, 1);
+                scriptNode.onaudioprocess = processAudio;
+                scriptNode.connect(audioContext.destination);
+            } catch (err) {
+                console.error("Error starting audio:", err);
+                audioContext = "broken"
+            }
+        }
+        document.getElementById('sound').addEventListener('mousedown', startAudio);
+
     </script>
 </body>
 </html>
