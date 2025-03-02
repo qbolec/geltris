@@ -37,7 +37,7 @@
             
             // Multiple layers of lightning with different characteristics
             for (let layer = 0; layer < 4; layer++) {
-                const offset = layer * 2 * Math.PI / 3; // Offset each layer's phase
+                const offset = y + layer * 2 * Math.PI / 3; // Offset each layer's phase
                 const width = (3 - layer) * 4; // Varying widths
                 const amplitude = (layer+1)*10 * (1 - progress); // Reduces amplitude over time
                 const waveLength = 1000/(layer+1);
@@ -456,7 +456,15 @@
                 drawBall(drag.atom);
             })
             const now = performance.now();
-            lightnings = lightnings.filter(lightning => now < lightning.startedAt + lightningDurationMs);
+            lightnings = lightnings.filter(lightning => {
+                const ok = now < lightning.startedAt + lightningDurationMs;
+                if(!ok && lightning.oscillator){
+                    lightning.oscillator.stop();
+                    lightning.oscillator.disconnect();
+                    lightning.gain.disconnect();
+                }
+                return ok;
+            });
             lightnings.forEach(lightning => drawLightningEffect(lightning.y, (now-lightning.startedAt)/lightningDurationMs))
         }
         let frameAt = [];
@@ -546,20 +554,11 @@
         document.body.addEventListener("mouseup", () => { drags = []; });
 
         let lastOffset = 0;
-        let strikeOscillator = null;
-
             
         function processAudio() {
             if(!audioContext)return;
             const now = performance.now();
             const updatePeriod = Math.max(0.1,fps?2/fps:1);
-            if(!strikeOscillator){
-                strikeOscillator = audioContext.createOscillator();
-                strikeOscillator.type ='square';
-                strikeOscillator.connect(audioContext.destination);
-                strikeOscillator.frequency.value = 0;
-                strikeOscillator.start();
-            }
             crystals.forEach(crystal => {
                 if(!crystal.oscillator){
                     crystal.gain = audioContext.createGain();
@@ -594,9 +593,20 @@
                     crystal.history.shift();
                 }
             })
-            const strike = lightnings.reduce((acc,lightning)=> acc + (1-(now-lightning.startedAt)/lightningDurationMs), 0)
-            strikeOscillator.frequency.linearRampToValueAtTime(strike*100, audioContext.currentTime+updatePeriod);
-            // strikeOscillator.frequency.exponentialRampToValueAtTime(strike*100||1e-9, audioContext.currentTime+updatePeriod);
+            lightnings.forEach(lightning=>{
+                if(!lightning.oscillator){
+                    lightning.gain = audioContext.createGain();
+                    lightning.gain.gain.value = 0.5;
+                    lightning.gain.connect(audioContext.destination)
+                    lightning.oscillator = audioContext.createOscillator();
+                    lightning.oscillator.type ='square';
+                    lightning.oscillator.connect(lightning.gain);
+                    lightning.oscillator.frequency.value = 100;
+                    lightning.oscillator.start();
+                }
+                const strike = 1-(now-lightning.startedAt)/lightningDurationMs;
+                lightning.oscillator.frequency.linearRampToValueAtTime(strike*100, audioContext.currentTime+updatePeriod);
+            })
         }
         function startAudio() {
             if (audioContext) return;
@@ -608,7 +618,15 @@
             }
         }
         document.body.addEventListener('pointerdown', startAudio);
+        document.addEventListener('visibilitychange',()=>{
+            if(!audioContext)return;
+            if(document.hidden){
+                audioContext.suspend();
+            }else{
+                audioContext.resume();
 
+            }
+        })
     </script>
 </body>
 </html>
