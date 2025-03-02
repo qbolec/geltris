@@ -502,13 +502,13 @@
         , null);
     
         ["touchcancel","touchstart","touchmove","touchend"].forEach(eventName => canvas.addEventListener(eventName, (e) => {
+            const touches = Array.from(e.touches);
             e.preventDefault();
-            if(resetDragStartedAt){
+            if(resetDragStartedAt && e.type == "touchstart"){
                 dragStartedAt = performance.now();
                 resetDragStartedAt = false;
-                // drags=[];
+                drags=[];
             }
-            const touches = Array.from(e.touches);
             drags=drags.filter(drag => touches.some(touch => touch.identifier == drag.identifier));
             touches.forEach(touch => {
                 let drag = drags.find(drag => drag.identifier == touch.identifier);
