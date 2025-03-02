@@ -212,8 +212,7 @@
             Crystal.fromBitmap(10, 260, [[1,0],[1,0],[1,1]]),
         ];
         let lightnings = [];
-        let mousePos = {x:0,y:0}
-        let draggingPoint = null;
+        let drags = [];
         function checkPoints(atoms){
             const invSpacing = 1/ATOM_SPACING;
             const byRow = Array.from({length:Math.ceil(canvas.height*invSpacing)+1},()=>[])
@@ -228,7 +227,7 @@
                     return;
                 }
                 const path = rowAtoms.concat(byRow[row-1]).sort((a,b)=>a.pos.x-b.pos.x);
-                if(path.every((atom,i)=>{
+                if(path.concat([{pos:{x:canvas.width,y:0}}]).every((atom,i)=>{
                     const lastX = i?path[i-1].pos.x:0;
                     return atom.pos.x < lastX + ATOM_SPACING*1.2;
                 })){
@@ -306,10 +305,10 @@
                 });
             });
             const crystal = crystals.at(-1);
-            if(draggingPoint){
+            drags.forEach(drag =>{
                 // todo: make this more deterministic
-                draggingPoint.f = plus(draggingPoint.f, scale(USER_STRENGTH*(2.7-remap(performance.now() - dragStartedAt,{min:0,max:3000},{min:0.7,max:2})), normalize(minus(mousePos,draggingPoint.pos))));
-            }
+                drag.atom.f = plus(drag.atom.f, scale(USER_STRENGTH*(2.7-remap(performance.now() - dragStartedAt,{min:0,max:3000},{min:0.7,max:2})), normalize(minus(drag.pos,drag.atom.pos))));
+            })
         }
         function updateInternalForces(){
             crystals.forEach(crystal => {
@@ -452,10 +451,10 @@
                 ctx.fillStyle = "red";
                 crystal.boundary.forEach(drawBall)
             });
-            if(draggingPoint){
+            drags.forEach(drag =>{
                 ctx.fillStyle = "yellow";
-                drawBall(draggingPoint);
-            }
+                drawBall(drag.atom);
+            })
             const now = performance.now();
             lightnings = lightnings.filter(lightning => now < lightning.startedAt + lightningDurationMs);
             lightnings.forEach(lightning => drawLightningEffect(lightning.y, (now-lightning.startedAt)/lightningDurationMs))
@@ -494,33 +493,57 @@
             }
         }
         loop();
-        function updateMousePos(e){
-            mousePos = {
-                x:(e.clientX||e.touches[0].clientX) - canvas.offsetLeft,
-                y:(e.clientY||e.touches[0].clientY) - canvas.offsetTop,
-            };
-        }
-        
-        ["mousedown","touchstart"].forEach(eventName => canvas.addEventListener(eventName, (e) => {
-            updateMousePos(e);
-            draggingPoint = crystals.at(-1).atoms.reduce((nearest, atom) => {
-                return (!nearest || distance(atom.pos, mousePos) < distance(nearest.pos, mousePos)) ? atom : nearest;
-            }, null);
+        const client2pos = (e)=>({
+            x:e.clientX - canvas.offsetLeft,
+            y:e.clientY - canvas.offsetTop,
+        })
+        const findNearestAtom = (p) => crystals.at(-1).atoms.reduce((nearest, atom) => 
+            (!nearest || distance(atom.pos, p) < distance(nearest.pos, p)) ? atom : nearest
+        , null);
+    
+        ["touchcancel","touchstart","touchmove","touchend"].forEach(eventName => canvas.addEventListener(eventName, (e) => {
+            e.preventDefault();
             if(resetDragStartedAt){
                 dragStartedAt = performance.now();
                 resetDragStartedAt = false;
+                // drags=[];
             }
-            if(distance(draggingPoint,mousePos)>5){
-                draggingPoint = null;
-            }
+            const touches = Array.from(e.touches);
+            drags=drags.filter(drag => touches.some(touch => touch.identifier == drag.identifier));
+            touches.forEach(touch => {
+                let drag = drags.find(drag => drag.identifier == touch.identifier);
+                const pos = client2pos(touch);
+                if(!drag){
+                    const atom = findNearestAtom(pos);
+                    if(atom){
+                        drags.push({pos, atom, identifier:touch.identifier})
+                    }
+                }else{
+                    drag.pos = pos;
+                }
+            })
         }));
-
-        ["mousemove","touchmove"].forEach(eventName => canvas.addEventListener(eventName, (e) => {
-            updateMousePos(e);
+        
+        canvas.addEventListener("mousedown", (e) => {
+            if(resetDragStartedAt){
+                dragStartedAt = performance.now();
+                resetDragStartedAt = false;
+                drags=[];
+            }
+            const pos = client2pos(e);
+            const atom = findNearestAtom(pos);
+            if(!atom)return;
+            drags[0]={pos,atom};
+        });
+        
+        canvas.addEventListener("mousemove", (e) => {
             e.preventDefault();
-        }));
+            if(drags[0]){
+                drags[0].pos = client2pos(e);
+            }
+        });
 
-        ["mouseup","touchend"].forEach(eventName => document.body.addEventListener(eventName, () => { draggingPoint = null; }));
+        document.body.addEventListener("mouseup", () => { drags = []; });
 
         let lastOffset = 0;
         let strikeOscillator = null;
@@ -582,7 +605,6 @@
                 audioContext = "broken"
             }
         }
-        // document.getElementById('sound').addEventListener('mousedown', startAudio);
         document.body.addEventListener('pointerdown', startAudio);
 
     </script>
