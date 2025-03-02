@@ -29,6 +29,8 @@
         let lastScoreAt = 0;
         let audioContext;
         let gameOver = false;
+        let dragStartedAt = performance.now();
+        let resetDragStartedAt = false
         function drawLightningEffect(y, progress) {            
             // Main lightning bolt
             const numZigs = 8;
@@ -98,7 +100,7 @@
         const INTEGRITY_K = 10000;
         const COLLISION_K = INTEGRITY_K;
         const COLLISION_NEUTRAL_LENGTH = ATOM_SPACING;
-        const USER_STRENGTH = 4*ATOMS_PER_CELL*ATOMS_PER_CELL*GRAVITY*0.7;
+        const USER_STRENGTH = 4*ATOMS_PER_CELL*ATOMS_PER_CELL*GRAVITY;
         const dt = 0.01;
         const SIM_STEPS_PER_DISPLAY = 3;
         const plus = (a,b) => ({x:a.x+b.x,y:a.y+b.y});
@@ -111,6 +113,9 @@
         const normalize = p => scale(1.0/length(p),p);
         const deg2rad = d => Math.PI*d/180;
         const polar = (a,r) => ({x:Math.cos(a)*r,y:Math.sin(a)*r});
+        const clamp = (a, x, b) => Math.min(b,Math.max(a,x));
+        const remap = (x, r1, r2) => clamp(r2.min,(x-r1.min)/(r1.max-r1.min)*(r2.max-r2.min)+r2.min, r2.max)
+        
         const SHAPES = [
             [[1,1,1,1]],
 
@@ -302,7 +307,8 @@
             });
             const crystal = crystals.at(-1);
             if(draggingPoint){
-                draggingPoint.f = plus(draggingPoint.f, scale(USER_STRENGTH, normalize(minus(mousePos,draggingPoint.pos))));
+                // todo: make this more deterministic
+                draggingPoint.f = plus(draggingPoint.f, scale(USER_STRENGTH*(2.7-remap(performance.now() - dragStartedAt,{min:0,max:3000},{min:0.7,max:2})), normalize(minus(mousePos,draggingPoint.pos))));
             }
         }
         function updateInternalForces(){
@@ -417,6 +423,7 @@
                     gameOver = true;
                 }
                 crystals.push(Crystal.fromBitmap(210,0, rotateNShape(SHAPES[Math.random()*SHAPES.length|0].map(row => row.slice(0)), Math.random()*4|0)));
+                resetDragStartedAt = true;
             }
         }
 
@@ -499,6 +506,10 @@
             draggingPoint = crystals.at(-1).atoms.reduce((nearest, atom) => {
                 return (!nearest || distance(atom.pos, mousePos) < distance(nearest.pos, mousePos)) ? atom : nearest;
             }, null);
+            if(resetDragStartedAt){
+                dragStartedAt = performance.now();
+                resetDragStartedAt = false;
+            }
             if(distance(draggingPoint,mousePos)>5){
                 draggingPoint = null;
             }
@@ -514,8 +525,6 @@
         let lastOffset = 0;
         let strikeOscillator = null;
 
-        const clamp = (a, x, b) => Math.min(b,Math.max(a,x));
-        const remap = (x, r1, r2) => clamp(r2.min,(x-r1.min)/(r1.max-r1.min)*(r2.max-r2.min)+r2.min, r2.max)
             
         function processAudio() {
             if(!audioContext)return;
