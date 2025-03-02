@@ -27,6 +27,8 @@
         let multiplier = 1;
         let score = 0;
         let lastScoreAt = 0;
+        let audioContext;
+        let gameOver = false;
         function drawLightningEffect(y, progress) {            
             // Main lightning bolt
             const numZigs = 8;
@@ -104,6 +106,7 @@
         const scale = (s,p) => ({x:s*p.x,y:s*p.y});
         const scalar = (a,b) => a.x*b.x + a.y*b.y;
         const length = p => Math.hypot(p.x, p.y)
+        const length2 = p => p.x*p.x+ p.y*p.y
         const distance = (a,b) => length(minus(a,b));
         const normalize = p => scale(1.0/length(p),p);
         const deg2rad = d => Math.PI*d/180;
@@ -272,6 +275,11 @@
                             newCrystals.push(new Crystal(done, springs, boundary));
                         }
                     })
+                    if(crystal.oscillator){
+                        crystal.oscillator.stop();
+                        crystal.oscillator.disconnect();
+                        crystal.gain.disconnect();
+                    }
                     return false;
                 })
                 crystals = newCrystals.concat(oldCrystals);
@@ -405,6 +413,9 @@
             setState(c);
             checkPoints(atoms);
             if(hit){
+                if(crystals.at(-1).atoms.some(atom => atom.pos.y < 10)){
+                    gameOver = true;
+                }
                 crystals.push(Crystal.fromBitmap(210,0, rotateNShape(SHAPES[Math.random()*SHAPES.length|0].map(row => row.slice(0)), Math.random()*4|0)));
             }
         }
@@ -443,18 +454,18 @@
             lightnings.forEach(lightning => drawLightningEffect(lightning.y, (now-lightning.startedAt)/lightningDurationMs))
         }
         let frameAt = [];
-        let soundAt = [];
+        let fps = 50;
         function loop() {
             for(let i=0;i<SIM_STEPS_PER_DISPLAY;++i)
                 update();
+            processAudio();
             draw();
             frameAt.push(Date.now());
             if(frameAt.length > 10){
                 frameAt.shift();
             }
-            const fps = Math.round((frameAt.length-1)/(frameAt.at(-1)-frameAt[0])*1000);
-            const sps = Math.round((soundAt.length-1)/(soundAt.at(-1)-soundAt[0])*1000);
-            // document.title = `${fps} ${sps}`;
+            fps = Math.round((frameAt.length-1)/(frameAt.at(-1)-frameAt[0])*1000);
+            // document.title = `${fps}`;
             const oldScore = +scoreEl.textContent;
             if(score > oldScore){
                 scoreEl.textContent = oldScore + Math.ceil(Math.log2(1+score-oldScore));
@@ -464,7 +475,16 @@
             }
             
             multiplierEl.textContent = (multiplier>1)?`${multiplier}×`:''
-            requestAnimationFrame(loop);
+            if(!gameOver){
+                requestAnimationFrame(loop);
+            }else{
+                crystals.forEach(crystal => {
+                    if(crystal.oscillator){
+                        crystal.oscillator.stop();
+                    }
+                })
+                strikeOscillator.stop();
+            }
         }
         loop();
         function updateMousePos(e){
@@ -491,108 +511,63 @@
 
         ["mouseup","touchend"].forEach(eventName => document.body.addEventListener(eventName, () => { draggingPoint = null; }));
 
-        let audioContext;
         let lastOffset = 0;
-        let history = [];
-        function processAudio(audioProcessingEvent) {
+        let strikeOscillator = null;
+
+        const clamp = (a, x, b) => Math.min(b,Math.max(a,x));
+        const remap = (x, r1, r2) => clamp(r2.min,(x-r1.min)/(r1.max-r1.min)*(r2.max-r2.min)+r2.min, r2.max)
+            
+        function processAudio() {
+            if(!audioContext)return;
             const now = performance.now();
-            soundAt.push(now);
-            if(soundAt.length > 10){
-                soundAt.shift();
+            const updatePeriod = Math.max(0.1,fps?2/fps:1);
+            if(!strikeOscillator){
+                strikeOscillator = audioContext.createOscillator();
+                strikeOscillator.connect(audioContext.destination);
+                strikeOscillator.frequency.value = 0;
+                strikeOscillator.start();
             }
-            const outputBuffer = audioProcessingEvent.outputBuffer;
-            const outputData = outputBuffer.getChannelData(0);
-            const sampleRate = audioContext.sampleRate;
-            const sampleToRadians = Math.PI*2/sampleRate;
-            let systemEnergy = 0;
-            let totalMass = 0;
-            let crystal2energy = new Map();
-            const sounds = crystals.map(crystal => {
-                // let crystalSpeed = 0;
-                let crystalEnergy = 0;
-                // let crystalForce = 0;
+            crystals.forEach(crystal => {
+                if(!crystal.oscillator){
+                    crystal.gain = audioContext.createGain();
+                    crystal.gain.gain.value = 0;
+                    crystal.gain.connect(audioContext.destination);
+                    crystal.oscillator = audioContext.createOscillator();
+                    crystal.oscillator.frequency.value = 150;
+                    crystal.oscillator.connect(crystal.gain);
+                    crystal.oscillator.start();
+                    crystal.history = [];
+                }
+                let energy = 0;
                 crystal.atoms.forEach(atom => {
-                    const speed=length(atom.v)
-                    const energy=speed*speed*atom.m/2;
-                    // const force=length(atom.f);
-                    // crystalSpeed += speed;
-                    crystalEnergy += energy;
-                    // crystalForce += force;
-                    // totalMass += atom.m;
+                    const speed2=length2(atom.v)
+                    energy+=speed2*atom.m/2;
                 })
-                crystal2energy.set(crystal, crystalEnergy)
-                // systemEnergy += crystalEnergy;
-                // return {
-                //     amplitude: crystalEnergy,
-                //     frequency: crystalForce,
-                // }
+                crystal.history.push({energy});
+                const oldState = crystal.history.at(-5);
+                if(oldState){
+                    const energyLost = Math.max(0,oldState.energy - energy)
+                    const noise = remap(energyLost,{min:0, max:60000}, {min:0, max:1});
+                    // crystal.oscillator.frequency.value = 150;//noise*150+50;
+                    crystal.oscillator.frequency.linearRampToValueAtTime(noise*150+50,audioContext.currentTime+updatePeriod);
+                    // crystal.oscillator.frequency.exponentialRampToValueAtTime(noise*150+50,audioContext.currentTime+updatePeriod);
+                    // crystal.gain.gain.value = noise;
+                    //crystal.gain.gain.cancelScheduledValues(audioContext.currentTime);
+                    crystal.gain.gain.linearRampToValueAtTime(noise,audioContext.currentTime+updatePeriod);
+                    // crystal.gain.gain.exponentialRampToValueAtTime(noise||1e-9,audioContext.currentTime+updatePeriod);
+                }
+                if(crystal.history.length>5){
+                    crystal.history.shift();
+                }
             })
-            // const frequencies = sounds.map(sound=>sound.frequency);
-            // const amplitudes = sounds.map(sound=>sound.amplitude);
-            let oldCrystal2Energy = history.at(-5)?.crystal2energy || new Map();
-            let crystalEnergiesLost = [];
-            for(const [atom,energy] of crystal2energy){
-                crystalEnergiesLost.push(Math.max(0, (oldCrystal2Energy.get(atom)||0) -energy))
-            }
-            // let energyLost = crystalEnergiesLost.reduce((acc,x)=>acc+x,0);
-
-            // const energyLost =Math.max(0, (history.at(-5)?.systemEnergy||systemEnergy) - systemEnergy);
-            // const massLost = Math.max(0, (history.at(-5)?.totalMass||totalMass) - totalMass);
-            const range = arr => ({min:Math.min(...arr),max:Math.max(...arr)})
-            history.push({
-                crystal2energy,
-                // totalMass,
-                // systemEnergy,
-                // energyLost,
-                // massLost,
-                // frequenciesRange: range(frequencies),
-                // amplitudesRange: range(amplitudes),
-            })
-            
-            if(history.length>100){
-                history.shift();
-            }
-            // const lostEnergyRange = {min:Math.min(...history.map(e=>e.energyLost)), max:Math.max(...history.map(e=>e.energyLost))}
-            // const frequencyRange = {min:Math.min(...history.map(e=>e.frequenciesRange.min)),max:Math.max(...history.map(e=>e.frequenciesRange.max))}
-            // const amplitudeRange = {min:Math.min(...history.map(e=>e.amplitudesRange.min)),max:Math.max(...history.map(e=>e.amplitudesRange.max))}
-            const remap = (x, r1, r2) => Math.max(r2.min,Math.min(r2.max,(x-r1.min)/(r1.max-r1.min)*(r2.max-r2.min)+r2.min))
-            // sounds.forEach(sound=>{
-            //     sound.frequency = remap(sound.frequency, frequencyRange, {min:200, max:1000});
-            //     sound.amplitude = remap(sound.amplitude, amplitudeRange, {min:0, max:1});
-            // })
-            // const noise = remap(energyLost, {min:0, max:60000}, {min:0, max:1});
-            const crystalNoises = crystalEnergiesLost.map(e => remap(e,{min:0, max:60000}, {min:0, max:1}));
-            // const boom = remap(massLost, {min:0, max:200}, {min:0, max: 1});
             const strike = lightnings.reduce((acc,lightning)=> acc + (1-(now-lightning.startedAt)/lightningDurationMs), 0)
-            const rand = () => Math.random()*2-1
-            for (let sample = 0; sample < outputBuffer.length; sample++) {
-                lastOffset++;
-                // outputData[sample] = sounds.reduce((acc,sound)=> acc + sound.amplitude*Math.sin(lastOffset*sound.frequency*sampleToRadians),(Math.random()-0.5)*noise)  
-                // outputData[sample] = sounds.reduce((acc,sound)=> acc + sound.amplitude*Math.sin(lastOffset*sound.frequency*sampleToRadians),Math.sin(lastOffset*100*sampleToRadians)*noise)  
-                // outputData[sample] = sounds.reduce((acc,sound)=> acc + sound.frequency/10000*Math.sin(lastOffset*sound.frequency*sampleToRadians),Math.sin((100*strike)*lastOffset*sampleToRadians))  
-                // outputData[sample] =  Math.sin(100+(100*strike)*lastOffset*sampleToRadians) + (Math.random()-0.5)*noise
-                // outputData[sample] =  Math.sin((100*strike)*lastOffset*sampleToRadians) + rand()*noise
-                // outputData[sample] =  Math.sin((100*strike)*lastOffset*sampleToRadians) + Math.sin(lastOffset*noise*200*sampleToRadians)*noise
-                outputData[sample] = crystalNoises.reduce((acc, n)=> acc+Math.sin(lastOffset*(100+n*200)*sampleToRadians)*n, Math.sin((100*strike)*lastOffset*sampleToRadians))
-            
-                // outputData[sample] =  Math.sin((100*strike)*lastOffset*sampleToRadians) + Math.sin(lastOffset*noise*200*sampleToRadians)
-                // outputData[sample] =  Math.sin((300*strike)*lastOffset*sampleToRadians) + Math.sin(lastOffset*300*sampleToRadians)*noise
-                // outputData[sample] =  Math.sin(100*lastOffset*sampleToRadians)*(strike)
-                // outputData[sample] =  (Math.random()-0.5)*(boom)
-                // outputData[sample] = (Math.random()-0.5)*noise
-                // outputData[sample] = (Math.random()-0.5)*(noise+strike)
-                //outputData[sample] = Math.sin(lastOffset*440*sampleToRadians); 
-            }
-
+            strikeOscillator.frequency.linearRampToValueAtTime(strike*100, audioContext.currentTime+updatePeriod);
+            // strikeOscillator.frequency.exponentialRampToValueAtTime(strike*100||1e-9, audioContext.currentTime+updatePeriod);
         }
         function startAudio() {
             if (audioContext) return;
-            
             try {
                 audioContext = new (window.AudioContext || window.webkitAudioContext)();
-                scriptNode = audioContext.createScriptProcessor(1024, 0, 1);
-                scriptNode.onaudioprocess = processAudio;
-                scriptNode.connect(audioContext.destination);
             } catch (err) {
                 console.error("Error starting audio:", err);
                 audioContext = "broken"
