@@ -77,7 +77,7 @@
             }
             
             // Add particle effects
-            const numParticles = 200;
+            const numParticles = 100;
             for (let i = 0; i < numParticles; i++) {
                 const dx = Math.sin(i*i)*200;
                 const dy = Math.cos(i*i)*200;
@@ -421,12 +421,20 @@
                 if(crystals.at(-1).atoms.some(atom => atom.pos.y < 10)){
                     gameOver = true;
                 }
-                crystals.push(Crystal.fromBitmap(210,0, rotateNShape(SHAPES[Math.random()*SHAPES.length|0].map(row => row.slice(0)), Math.random()*4|0)));
+                crystals.push(Crystal.fromBitmap(170,0, rotateNShape(SHAPES[Math.random()*SHAPES.length|0].map(row => row.slice(0)), Math.random()*4|0)));
                 resetDragStartedAt = true;
             }
         }
 
+        const drawBall = atom => {
+            const RADIUS = 2;
+            ctx.beginPath();
+            ctx.arc(atom.pos.x, atom.pos.y, RADIUS, 0, Math.PI * 2);
+            ctx.fill();
+        }
         function draw() {
+
+
             ctx.fillStyle = "black";
             ctx.fillRect(0, 0, canvas.width, canvas.height);
             ctx.lineWidth = 1;
@@ -439,12 +447,6 @@
             //         ctx.stroke();
             //     })
             // });
-            const RADIUS = 2;
-            const drawBall = atom => {
-                ctx.beginPath();
-                ctx.arc(atom.pos.x, atom.pos.y, RADIUS, 0, Math.PI * 2);
-                ctx.fill();
-            }
             crystals.forEach(crystal => {
                 ctx.fillStyle = "#c0c0ff";
                 crystal.atoms.forEach(drawBall)
@@ -497,7 +499,29 @@
                         crystal.oscillator.stop();
                     }
                 })
-                strikeOscillator.stop();
+                lightnings.forEach(lightning =>{
+                    if(lightning.oscillator){
+                        lightning.oscillator.stop();
+                    }
+                })
+                ctx.fillStyle = "black";
+                ctx.fillRect(0, 0, canvas.width, 100);
+                ctx.fillStyle = 'yellow';
+                ctx.font = 'bold 64px Arial';
+                ctx.textAlign = 'center'
+                ctx.textBaseline = 'top'
+                ctx.fillText('GAME OVER',canvas.width/2,40);
+                const imageData = ctx.getImageData(0, 0, canvas.width, 100);
+                ctx.fillStyle = "black";
+                ctx.fillRect(0, 0, canvas.width, 100);
+                ctx.fillStyle = "red";
+                for(let y=0; y<100; y+= ATOM_SPACING){
+                    for(let x = 0; x<canvas.width; x+= ATOM_SPACING){
+                        if(imageData.data[(y*canvas.width+x)*4+1]){
+                            drawBall({pos:{x,y}});
+                        }
+                    }
+                }
             }
         }
         loop();
