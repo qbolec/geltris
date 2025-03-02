@@ -555,6 +555,7 @@
             const updatePeriod = Math.max(0.1,fps?2/fps:1);
             if(!strikeOscillator){
                 strikeOscillator = audioContext.createOscillator();
+                strikeOscillator.type ='square';
                 strikeOscillator.connect(audioContext.destination);
                 strikeOscillator.frequency.value = 0;
                 strikeOscillator.start();
@@ -565,6 +566,7 @@
                     crystal.gain.gain.value = 0;
                     crystal.gain.connect(audioContext.destination);
                     crystal.oscillator = audioContext.createOscillator();
+                    crystal.oscillator.type = 'triangle'
                     crystal.oscillator.frequency.value = 150;
                     crystal.oscillator.connect(crystal.gain);
                     crystal.oscillator.start();
