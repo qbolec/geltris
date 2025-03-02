@@ -130,6 +130,12 @@
 
             [[1,1,1],
              [0,1,0]],
+
+            [[1,1,1],
+             [1,0,0]],
+
+            [[1,1,1],
+             [0,0,1]],
         ];
         const rotateShape = shape => shape[0].map((_,c) => shape.map((_,r) => shape[r][shape[0].length-1-c]));
         function rotateNShape(shape,n){
