@@ -30,7 +30,9 @@
         let audioContext;
         let gameOver = false;
         let dragStartedAt = performance.now();
-        let resetDragStartedAt = false
+        let resetDragStartedAt = false;
+
+
         function drawLightningEffect(y, progress) {            
             // Main lightning bolt
             const numZigs = 8;
@@ -295,15 +297,19 @@
                 crystals = newCrystals.concat(oldCrystals);
             }
         }
+        let gravity = {x:0, y: +GRAVITY};
         function updateInitForces(){
             crystals.forEach(crystal => {
                 crystal.atoms.forEach(atom => {
-                    atom.f = {x:-atom.v.x*DRAG,y:-atom.v.y*DRAG+GRAVITY}
+                    atom.f = plus(scale(-DRAG, atom.v),gravity);
                     if(atom.pos.x<COLLISION_NEUTRAL_LENGTH){
                         atom.f.x += COLLISION_K*(COLLISION_NEUTRAL_LENGTH-atom.pos.x);
                     }
                     if(canvas.width-COLLISION_NEUTRAL_LENGTH<atom.pos.x){
                         atom.f.x -= COLLISION_K*(atom.pos.x-canvas.width+COLLISION_NEUTRAL_LENGTH);
+                    }
+                    if(atom.pos.y<COLLISION_NEUTRAL_LENGTH){
+                        atom.f.y += COLLISION_K*(COLLISION_NEUTRAL_LENGTH-atom.pos.y);
                     }
                     if(canvas.height-COLLISION_NEUTRAL_LENGTH<atom.pos.y){
                         atom.f.y -= COLLISION_K*(atom.pos.y-canvas.height+COLLISION_NEUTRAL_LENGTH);
@@ -427,7 +433,7 @@
                 if(crystals.at(-1).atoms.some(atom => atom.pos.y < 10)){
                     gameOver = true;
                 }
-                crystals.push(Crystal.fromBitmap(170,0, rotateNShape(SHAPES[Math.random()*SHAPES.length|0].map(row => row.slice(0)), Math.random()*4|0)));
+                crystals.push(Crystal.fromBitmap(170,10, rotateNShape(SHAPES[Math.random()*SHAPES.length|0].map(row => row.slice(0)), Math.random()*4|0)));
                 resetDragStartedAt = true;
             }
         }
@@ -454,7 +460,8 @@
             //     })
             // });
             crystals.forEach(crystal => {
-                ctx.fillStyle = "#c0c0ff";
+                // ctx.fillStyle = "#c0c0ff";
+                ctx.fillStyle = "#4040ff";
                 crystal.atoms.forEach(drawBall)
                 ctx.fillStyle = "red";
                 crystal.boundary.forEach(drawBall)
@@ -657,6 +664,33 @@
 
             }
         })
+        function handleGravity(acl){
+          const len = Math.sqrt(acl.x**2 + acl.y**2 + acl.z**2)||1;
+          const n = {x: acl.x/len, y: acl.y/len, z: acl.z/len};
+          // report(['x','y','z'].map(d=>`${d}=${n[d].toFixed(2)}`).join(' ') + ` ${screen.orientation.type} ${screen.orientation.angle}` );
+          //landscape-secondary 270, left=+y, right=-y, down=-x, up=+x
+          //   landscape-primary 90, left=-y, right=+y, down=+x, up=-x
+          //     portrait-primary 0, left=+x, right=-x, down=+y, up=-y
+          const right = polar(deg2rad(180-screen.orientation.angle),1);
+          const up = polar(deg2rad(270-screen.orientation.angle),1);
+          gravity = {x: scalar(right,n), y:-scalar(up,n)};
+        }
+        let accelerometer = null;
+        try {
+            accelerometer = new GravitySensor({ referenceFrame: 'device',frequency: 60 });
+            accelerometer.addEventListener('error', event => {
+                // Handle runtime errors.
+                if (event.error.name === 'NotAllowedError') {
+                    // Branch to code for requesting permission.
+                } else if (event.error.name === 'NotReadableError' ) {
+                    report('Cannot connect to the sensor.');
+                }
+            });
+            accelerometer.addEventListener('reading', () => handleGravity(accelerometer));
+            accelerometer.start();
+        } catch (error) {
+        }
+
     </script>
 </body>
 </html>
