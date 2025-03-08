@@ -319,7 +319,7 @@
             const crystal = crystals.at(-1);
             drags.forEach(drag =>{
                 // todo: make this more deterministic
-                drag.atom.f = plus(drag.atom.f, scale(USER_STRENGTH*(2.7-remap(performance.now() - dragStartedAt,{min:0,max:3000},{min:0.7,max:2})), normalize(minus(drag.pos,drag.atom.pos))));
+                drag.atom.f = plus(drag.atom.f, scale(USER_STRENGTH/drags.length*(2.7-remap(performance.now() - dragStartedAt,{min:0,max:3000},{min:0.7,max:2})), normalize(minus(drag.pos,drag.atom.pos))));
             })
         }
         function updateInternalForces(){
