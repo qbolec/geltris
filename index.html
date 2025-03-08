@@ -673,7 +673,7 @@
           //     portrait-primary 0, left=+x, right=-x, down=+y, up=-y
           const right = polar(deg2rad(180-screen.orientation.angle),1);
           const up = polar(deg2rad(270-screen.orientation.angle),1);
-          gravity = {x: scalar(right,n), y:-scalar(up,n)};
+          gravity = scale(GRAVITY,{x: scalar(right,n), y:-scalar(up,n)});
         }
         let accelerometer = null;
         try {
